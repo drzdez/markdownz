@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markdownz</title>
+  </head>
+  <body>
+    <div id="app">
+      <header id="tabbar" role="tablist" aria-label="Open documents"></header>
+      <main id="main">
+        <nav id="toc" aria-label="Table of contents" hidden></nav>
+        <div id="docs"></div>
+      </main>
+    </div>
+    <div id="findbar" hidden>
+      <input id="find-input" type="search" placeholder="Find in document" spellcheck="false" autocomplete="off" />
+      <span id="find-count"></span>
+      <button id="find-prev" title="Previous (Shift+Enter)">&#8593;</button>
+      <button id="find-next" title="Next (Enter)">&#8595;</button>
+      <button id="find-close" title="Close (Esc)">&#10005;</button>
+    </div>
+    <div id="toast" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
