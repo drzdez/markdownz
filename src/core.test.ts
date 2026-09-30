@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { HistoryTree } from "./history";
 import { classifyLink } from "./links";
 import { basename, dirname, resolvePath, samePath } from "./paths";
+import { dropIndex, indicesToClose, moveItem } from "./tabops";
 
 describe("paths", () => {
   it("resolves POSIX paths", () => {
@@ -106,5 +107,28 @@ describe("history tree", () => {
     expect(copy.current.path).toBe("b");
     expect(copy.current.scroll).toBe(120);
     expect(copy.navigate("c").id).toBe(2);
+  });
+});
+
+describe("tab operations", () => {
+  it("selects tabs to close", () => {
+    expect(indicesToClose(5, 2, "this")).toEqual([2]);
+    expect(indicesToClose(5, 2, "others")).toEqual([0, 1, 3, 4]);
+    expect(indicesToClose(5, 2, "right")).toEqual([3, 4]);
+    expect(indicesToClose(5, 2, "left")).toEqual([0, 1]);
+    expect(indicesToClose(3, 0, "all")).toEqual([0, 1, 2]);
+    expect(indicesToClose(3, 2, "right")).toEqual([]);
+  });
+
+  it("moves items", () => {
+    expect(moveItem(["a", "b", "c", "d"], 0, 2)).toEqual(["b", "c", "a", "d"]);
+    expect(moveItem(["a", "b", "c", "d"], 3, 0)).toEqual(["d", "a", "b", "c"]);
+    expect(moveItem(["a", "b"], 0, 9)).toEqual(["b", "a"]);
+  });
+
+  it("computes drop position from pointer", () => {
+    expect(dropIndex(5, [10, 30, 50])).toBe(0);
+    expect(dropIndex(35, [10, 30, 50])).toBe(2);
+    expect(dropIndex(99, [10, 30, 50])).toBe(3);
   });
 });

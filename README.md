@@ -32,6 +32,8 @@ On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Press <kbd>F1</kbd> in t
 | <kbd>Ctrl</kbd>+<kbd>O</kbd> | Open file(s) |
 | <kbd>Ctrl</kbd>+<kbd>W</kbd>, middle click on tab | Close tab |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>T</kbd> | Reopen closed tab |
+| Right click on a tab | Close others, tabs to the right / left, all |
+| Drag a tab | Reorder tabs |
 | <kbd>Ctrl</kbd>+<kbd>Tab</kbd> / <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Tab</kbd>, <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> | Switch tabs |
 | <kbd>Alt</kbd>+<kbd>←</kbd>, mouse back | Back |
 | <kbd>Alt</kbd>+<kbd>→</kbd>, mouse forward | Forward (asks when there are several branches) |

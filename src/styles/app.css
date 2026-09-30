@@ -123,6 +123,12 @@ button {
   margin-bottom: -1px;
 }
 
+.tab.dragging {
+  opacity: 0.85;
+  background: var(--hover);
+  cursor: grabbing;
+}
+
 .tab-title {
   flex: 1;
   overflow: hidden;
@@ -515,6 +521,47 @@ kbd {
   bottom: 12px;
   color: var(--muted);
   font-size: 12px;
+}
+
+.mdz-menu {
+  position: fixed;
+  min-width: 220px;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  z-index: 45;
+}
+
+.mdz-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  width: 100%;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mdz-menu button:hover:not(:disabled),
+.mdz-menu button:focus {
+  background: var(--hover);
+  outline: none;
+}
+
+.mdz-menu button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.mdz-menu hr {
+  margin: 4px 0;
+  border: 0;
+  border-top: 1px solid var(--border);
 }
 
 /* --------------------------------------------------------------- print */

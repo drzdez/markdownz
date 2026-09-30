@@ -4,6 +4,8 @@ import { classifyLink } from "./links";
 import { basename, samePath } from "./paths";
 import { Renderer, slugify } from "./render/renderer";
 import { DEFAULT_CONFIG, DEFAULT_SESSION, type Config, type Session } from "./state";
+import { dropIndex, indicesToClose, moveItem, type CloseScope } from "./tabops";
+import { showContextMenu } from "./ui/contextMenu";
 import { openDiagram } from "./ui/diagramViewer";
 import { pickForward, showHelp, showHistoryTree, showSettings } from "./ui/dialogs";
 import { Finder } from "./ui/find";
@@ -124,20 +126,91 @@ export class App {
   }
 
   private closeTab(tab: Tab | null): void {
-    if (!tab) return;
+    if (tab) this.closeTabs(tab, "this");
+  }
+
+  /** Closes tabs relative to `tab`; closed tabs can be reopened with Ctrl+Shift+T. */
+  private closeTabs(tab: Tab, scope: CloseScope): void {
     const index = this.tabs.indexOf(tab);
-    this.tabs.splice(index, 1);
-    tab.view.remove();
-    this.session.closed = [...this.session.closed, tab.history.toJSON()].slice(-MAX_CLOSED);
-    if (tab === this.active) {
+    const closing = indicesToClose(this.tabs.length, index, scope).map((i) => this.tabs[i]);
+    if (!closing.length) return;
+    for (const t of closing) {
+      t.view.remove();
+      this.session.closed.push(t.history.toJSON());
+    }
+    this.session.closed = this.session.closed.slice(-MAX_CLOSED);
+    const activeIndex = this.active ? this.tabs.indexOf(this.active) : -1;
+    this.tabs = this.tabs.filter((t) => !closing.includes(t));
+
+    if (this.active && closing.includes(this.active)) {
       this.active = null;
-      const next = this.tabs[Math.min(index, this.tabs.length - 1)];
+      // Prefer the tab the action was invoked on, then the neighbour of the old active tab.
+      const next = this.tabs.includes(tab) ? tab : this.tabs[Math.min(activeIndex, this.tabs.length - 1)];
       if (next) void this.activate(next);
       else this.showWelcome();
     }
     this.renderTabbar();
     this.updateWatch();
     this.scheduleSave();
+  }
+
+  private showTabMenu(tab: Tab, x: number, y: number): void {
+    const index = this.tabs.indexOf(tab);
+    const last = this.tabs.length - 1;
+    showContextMenu(x, y, [
+      { label: "Close", hint: "Ctrl+W", action: () => this.closeTabs(tab, "this") },
+      { label: "Close others", disabled: !last, action: () => this.closeTabs(tab, "others") },
+      { label: "Close tabs to the right", disabled: index === last, action: () => this.closeTabs(tab, "right") },
+      { label: "Close tabs to the left", disabled: index === 0, action: () => this.closeTabs(tab, "left") },
+      { label: "Close all", action: () => this.closeTabs(tab, "all") },
+      null,
+      { label: "Reopen closed tab", hint: "Ctrl+Shift+T", disabled: !this.session.closed.length, action: () => this.reopenClosed() },
+    ]);
+  }
+
+  /**
+   * Reorders tabs by dragging. Pointer events are used instead of HTML5
+   * drag and drop, which the native file-drop handling intercepts.
+   */
+  private startTabDrag(tab: Tab, item: HTMLElement, down: PointerEvent): void {
+    const strip = item.parentElement!;
+    const startX = down.clientX;
+    let dragging = false;
+
+    const move = (e: PointerEvent) => {
+      if (!dragging) {
+        if (Math.abs(e.clientX - startX) < 5) return;
+        dragging = true;
+        item.classList.add("dragging");
+      }
+      const others = [...strip.children].filter((c) => c !== item) as HTMLElement[];
+      const centres = others.map((o) => {
+        const r = o.getBoundingClientRect();
+        return r.left + r.width / 2;
+      });
+      const target = others[dropIndex(e.clientX, centres)] ?? null;
+      if (item.nextElementSibling !== target) strip.insertBefore(item, target);
+      // Scroll the tab strip when dragging near its edges.
+      const bounds = strip.getBoundingClientRect();
+      if (e.clientX < bounds.left + 20) strip.scrollLeft -= 10;
+      else if (e.clientX > bounds.right - 20) strip.scrollLeft += 10;
+    };
+    // Listen on the window: moving the element in the DOM would drop pointer capture.
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+      if (!dragging) return;
+      // The click that follows pointerup must not count as a tab click.
+      item.addEventListener("click", (e) => e.stopImmediatePropagation(), { capture: true, once: true });
+      const to = [...strip.children].indexOf(item);
+      this.tabs = moveItem(this.tabs, this.tabs.indexOf(tab), to);
+      this.renderTabbar();
+      this.scheduleSave();
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
   }
 
   private reopenClosed(): void {
@@ -405,6 +478,14 @@ export class App {
       item.addEventListener("click", () => void this.activate(t));
       item.addEventListener("auxclick", (e) => {
         if (e.button === 1) this.closeTab(t);
+      });
+      item.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.showTabMenu(t, e.clientX, e.clientY);
+      });
+      item.addEventListener("pointerdown", (e) => {
+        if (e.button === 0 && !(e.target as Element).closest(".tab-close")) this.startTabDrag(t, item, e);
       });
       return item;
     });
