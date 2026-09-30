@@ -40,6 +40,10 @@ Pushing a `v*` tag builds the bundle in [`release.yml`](../.github/workflows/rel
 
 ## Publishing on Flathub
 
+> [!WARNING]
+> Not submitted yet. Flathub's [requirements](https://docs.flathub.org/docs/for-app-authors/requirements) forbid AI-generated or AI-assisted manifests (the manifest here was written with an AI assistant), require disclosure of AI-generated application code, forbid AI tools from opening or driving the submission pull request, and expect a meaningful development history.
+> A submission therefore has to be prepared and filed by the maintainer personally, with a hand-written manifest. Until then, use the `.flatpak` bundle from the releases.
+
 Flathub does not accept uploaded builds. It builds apps itself from a manifest kept in its own GitHub repository, so publishing happens in two stages.
 
 **First submission (manual, reviewed by Flathub):**
