@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.drzdez.markdownz</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+
+  <name>Markdownz</name>
+  <summary>Read Markdown with diagrams and math</summary>
+  <developer id="io.github.drzdez">
+    <name>drzdez</name>
+  </developer>
+
+  <description>
+    <p>
+      Markdownz is a fast, lightweight viewer for Markdown documents. Open a file,
+      read it, press Escape and it is gone.
+    </p>
+    <ul>
+      <li>GitHub-flavored Markdown: tables, task lists, alerts, footnotes and emoji</li>
+      <li>Mermaid and Graphviz diagrams, KaTeX math and syntax highlighting</li>
+      <li>Tabs that are restored on the next start</li>
+      <li>Tree-shaped history: going back and following another link keeps both branches</li>
+      <li>Live reload when the file changes, find in page, zoom and a table of contents</li>
+      <li>Light and dark theme following the system</li>
+    </ul>
+    <p>
+      Every extension can be switched off in the settings. Scripts in documents are
+      removed and nothing is downloaded while viewing.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.drzdez.markdownz.desktop</launchable>
+
+  <url type="homepage">https://github.com/drzdez/markdownz</url>
+  <url type="bugtracker">https://github.com/drzdez/markdownz/issues</url>
+  <url type="vcs-browser">https://github.com/drzdez/markdownz</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <image>https://raw.githubusercontent.com/drzdez/markdownz/main/docs/screenshots/diagrams-light.png</image>
+      <caption>Mermaid and Graphviz diagrams with a table of contents</caption>
+    </screenshot>
+    <screenshot>
+      <image>https://raw.githubusercontent.com/drzdez/markdownz/main/docs/screenshots/content-dark.png</image>
+      <caption>Tables, alerts and code in the dark theme</caption>
+    </screenshot>
+  </screenshots>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#93c5fd</color>
+    <color type="primary" scheme_preference="dark">#1e3a8a</color>
+  </branding>
+
+  <content_rating type="oars-1.1" />
+
+  <supports>
+    <control>pointing</control>
+    <control>keyboard</control>
+  </supports>
+  <requires>
+    <display_length compare="ge">420</display_length>
+  </requires>
+
+  <provides>
+    <binary>markdownz</binary>
+    <mediatype>text/markdown</mediatype>
+  </provides>
+
+  <categories>
+    <category>Office</category>
+    <category>Viewer</category>
+  </categories>
+  <keywords>
+    <keyword>markdown</keyword>
+    <keyword>mermaid</keyword>
+    <keyword>viewer</keyword>
+  </keywords>
+
+  <releases>
+    <release version="0.1.1" date="2026-09-30">
+      <description>
+        <p>Available as a Flatpak.</p>
+      </description>
+    </release>
+    <release version="0.1.0" date="2026-09-30">
+      <description>
+        <p>First release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

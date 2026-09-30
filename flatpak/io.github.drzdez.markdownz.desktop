@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=Markdownz
+GenericName=Markdown Viewer
+Comment=Fast Markdown viewer with Mermaid, math and diagrams
+Exec=markdownz %F
+Icon=io.github.drzdez.markdownz
+Terminal=false
+Categories=Office;Viewer;
+MimeType=text/markdown;text/x-markdown;
+Keywords=markdown;md;mermaid;katex;graphviz;viewer;
+StartupNotify=true

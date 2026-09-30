@@ -1,0 +1,52 @@
+# Flatpak manifest used by CI and for local builds (builds the current checkout).
+# The Flathub copy is the same except that the first source points at a release tag
+# (see flatpak/README.md).
+id: io.github.drzdez.markdownz
+runtime: org.gnome.Platform
+runtime-version: '51'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+  - org.freedesktop.Sdk.Extension.node22
+command: markdownz
+finish-args:
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  # Read-only access to home: relative links, images next to the document and
+  # live reload need the surrounding files, not just the one opened.
+  - --filesystem=home:ro
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin:/usr/lib/sdk/node22/bin
+  env:
+    CARGO_HOME: /run/build/markdownz/cargo
+    CARGO_NET_OFFLINE: 'true'
+    npm_config_cache: /run/build/markdownz/flatpak-node/npm-cache
+    npm_config_offline: 'true'
+    XDG_CACHE_HOME: /run/build/markdownz/flatpak-node/cache
+modules:
+  - name: markdownz
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: ..
+        skip:
+          - node_modules
+          - dist
+          - src-tauri/target
+          - .flatpak-builder
+          - flatpak/build
+          - flatpak/repo
+      - node-sources.json
+      - cargo-sources.json
+    build-commands:
+      - npm ci --offline --ignore-scripts
+      - npm run build
+      - cargo build --release --offline --locked --manifest-path src-tauri/Cargo.toml --features tauri/custom-protocol
+      - install -Dm755 src-tauri/target/release/markdownz /app/bin/markdownz
+      - install -Dm644 flatpak/io.github.drzdez.markdownz.desktop /app/share/applications/io.github.drzdez.markdownz.desktop
+      - install -Dm644 flatpak/io.github.drzdez.markdownz.metainfo.xml /app/share/metainfo/io.github.drzdez.markdownz.metainfo.xml
+      - install -Dm644 assets/icon.svg /app/share/icons/hicolor/scalable/apps/io.github.drzdez.markdownz.svg
+      - install -Dm644 src-tauri/icons/128x128.png /app/share/icons/hicolor/128x128/apps/io.github.drzdez.markdownz.png
+      - install -Dm644 src-tauri/icons/128x128@2x.png /app/share/icons/hicolor/256x256/apps/io.github.drzdez.markdownz.png

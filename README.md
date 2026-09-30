@@ -68,7 +68,9 @@ Download the installer for your platform from [Releases](https://github.com/drzd
 |---|---|
 | Windows 10/11 | `.msi` or `-setup.exe` (uses the preinstalled WebView2 runtime) |
 | macOS 11+ | `.dmg` (Apple Silicon and Intel builds) |
-| Linux | `.deb`, `.rpm` or `.AppImage` (needs WebKitGTK 4.1) |
+| Linux | `.flatpak`, `.deb`, `.rpm` or `.AppImage` (the non-Flatpak packages need WebKitGTK 4.1) |
+
+Flatpak: `flatpak install --user ./Markdownz_<version>_x86_64.flatpak` (needs the Flathub remote for the GNOME runtime; see [flatpak/README.md](flatpak/README.md), which also describes publishing on Flathub). Fedora Silverblue, Kinoite and Bazzite should prefer the Flatpak; Fedora Workstation can use the `.rpm` too.
 
 The installers register Markdownz as a viewer for `.md`, `.markdown` and similar extensions. To make it the default app, use "Open with → Always" (Windows/macOS) or `xdg-mime default markdownz.desktop text/markdown` (Linux).
 
