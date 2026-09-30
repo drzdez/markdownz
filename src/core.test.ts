@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { HistoryTree } from "./history";
 import { classifyLink } from "./links";
-import { basename, dirname, resolvePath, samePath } from "./paths";
+import { basename, dirname, extname, resolvePath, samePath, toFileUrl } from "./paths";
 import { dropIndex, indicesToClose, moveItem } from "./tabops";
 
 describe("paths", () => {
@@ -26,31 +26,45 @@ describe("paths", () => {
     expect(basename("/x/y/readme.md")).toBe("readme.md");
   });
 
+  it("extracts extensions and builds file URLs", () => {
+    expect(extname("C:\\Docs\\Spec.PDF")).toBe("pdf");
+    expect(extname("/x/.hidden")).toBe("");
+    expect(toFileUrl("C:\\My Docs\\a#1.pdf")).toBe("file:///C:/My%20Docs/a%231.pdf");
+    expect(toFileUrl("/home/u/a.md")).toBe("file:///home/u/a.md");
+  });
+
   it("compares Windows paths case-insensitively", () => {
     expect(samePath("C:\\Docs\\A.md", "c:/docs/a.md")).toBe(true);
     expect(samePath("/Docs/A.md", "/docs/a.md")).toBe(false);
   });
 });
 
+const viewable = (p: string) => /\.(md|pdf)$/i.test(p);
+
 describe("links", () => {
   const doc = "/home/u/notes/index.md";
 
   it("classifies link kinds", () => {
-    expect(classifyLink("#intro", doc)).toEqual({ kind: "anchor", id: "intro" });
-    expect(classifyLink("https://example.com", doc)).toEqual({ kind: "external", url: "https://example.com" });
-    expect(classifyLink("mailto:a@b.c", doc)?.kind).toBe("external");
-    expect(classifyLink("sub/page.md#part-2", doc)).toEqual({
+    expect(classifyLink("#intro", doc, viewable)).toEqual({ kind: "anchor", id: "intro" });
+    expect(classifyLink("https://example.com", doc, viewable)).toEqual({ kind: "external", url: "https://example.com" });
+    expect(classifyLink("mailto:a@b.c", doc, viewable)?.kind).toBe("external");
+    expect(classifyLink("sub/page.md#part-2", doc, viewable)).toEqual({
       kind: "doc",
       path: "/home/u/notes/sub/page.md",
       hash: "part-2",
     });
-    expect(classifyLink("../img/a%20b.png", doc)).toEqual({ kind: "file", path: "/home/u/img/a b.png" });
-    expect(classifyLink("?x=1#top", doc)).toEqual({ kind: "anchor", id: "top" });
+    expect(classifyLink("../img/a%20b.png", doc, viewable)).toEqual({ kind: "file", path: "/home/u/img/a b.png" });
+    expect(classifyLink("?x=1#top", doc, viewable)).toEqual({ kind: "anchor", id: "top" });
+  });
+
+  it("treats viewable non-Markdown files as documents", () => {
+    expect(classifyLink("spec.pdf#page=2", doc, viewable)).toEqual({ kind: "doc", path: "/home/u/notes/spec.pdf", hash: "page=2" });
+    expect(classifyLink("data.xlsx", doc, viewable)).toEqual({ kind: "file", path: "/home/u/notes/data.xlsx" });
   });
 
   it("handles file URLs and drive letters", () => {
-    expect(classifyLink("file:///C:/docs/x.md", "C:\\a\\b.md")).toEqual({ kind: "doc", path: "C:/docs/x.md", hash: "" });
-    expect(classifyLink("D:\\y.md", "C:\\a\\b.md")).toEqual({ kind: "doc", path: "D:\\y.md", hash: "" });
+    expect(classifyLink("file:///C:/docs/x.md", "C:\\a\\b.md", viewable)).toEqual({ kind: "doc", path: "C:/docs/x.md", hash: "" });
+    expect(classifyLink("D:\\y.md", "C:\\a\\b.md", viewable)).toEqual({ kind: "doc", path: "D:\\y.md", hash: "" });
   });
 });
 

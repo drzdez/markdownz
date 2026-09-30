@@ -1,4 +1,4 @@
-import { dirname, isMarkdownPath, resolvePath } from "./paths";
+import { dirname, resolvePath } from "./paths";
 
 export type LinkTarget =
   | { kind: "anchor"; id: string }
@@ -20,8 +20,12 @@ function fileUrlToPath(url: string): string {
   return p;
 }
 
-/** Decides what clicking `href` inside the document at `docPath` should do. */
-export function classifyLink(href: string, docPath: string): LinkTarget | null {
+/**
+ * Decides what clicking `href` inside the document at `docPath` should do.
+ * `isViewable` tells which local files the app can show itself ("doc");
+ * other local files are "file".
+ */
+export function classifyLink(href: string, docPath: string, isViewable: (path: string) => boolean): LinkTarget | null {
   href = href.trim();
   if (!href) return null;
   if (href.startsWith("#")) return { kind: "anchor", id: decode(href.slice(1)) };
@@ -41,5 +45,5 @@ export function classifyLink(href: string, docPath: string): LinkTarget | null {
     path = resolvePath(dirname(docPath), decode(pathPart));
     hash = decode(h);
   }
-  return isMarkdownPath(path) ? { kind: "doc", path, hash } : { kind: "file", path };
+  return isViewable(path) ? { kind: "doc", path, hash } : { kind: "file", path };
 }

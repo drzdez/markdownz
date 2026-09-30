@@ -1,0 +1,16 @@
+[Desktop Entry]
+Categories=Office;Viewer;
+{{#if comment}}
+Comment={{comment}}
+{{/if}}
+Exec={{exec}} %F
+StartupWMClass={{exec}}
+Icon={{icon}}
+Name={{name}}
+GenericName=Document Viewer
+Keywords=markdown;md;pdf;mermaid;viewer;
+Terminal=false
+Type=Application
+{{#if mime_type}}
+MimeType={{mime_type}};text/x-markdown;
+{{/if}}

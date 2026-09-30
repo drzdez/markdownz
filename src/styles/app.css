@@ -196,11 +196,28 @@ button {
   min-width: 0;
 }
 
+.doc-frame,
 .doc-view {
   position: absolute;
   inset: 0;
+}
+
+.doc-view {
   overflow: auto;
   outline: none;
+}
+
+.pdf-view {
+  background: var(--chrome);
+}
+
+/* pdf.js find highlights use its own classes; make the current match stand out like in Markdown. */
+.pdf-view .textLayer .highlight.selected {
+  background-color: var(--mark-current);
+}
+
+#mdz-print {
+  display: none;
 }
 
 .doc-view > .markdown-body {
@@ -585,9 +602,29 @@ kbd {
     display: none !important;
   }
 
+  .doc-frame,
   .doc-view {
     position: static;
     overflow: visible;
+  }
+
+  .doc-frame[hidden] {
+    display: none !important;
+  }
+
+  body.mdz-printing-pdf #app {
+    display: none !important;
+  }
+
+  body.mdz-printing-pdf #mdz-print {
+    display: block;
+  }
+
+  #mdz-print img {
+    display: block;
+    width: 100%;
+    page-break-after: always;
+    break-after: page;
   }
 
   .doc-view > .markdown-body {

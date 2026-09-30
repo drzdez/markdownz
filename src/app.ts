@@ -1,12 +1,13 @@
 import * as backend from "./backend";
+import { ErrorView } from "./formats/errorView";
+import { FORMATS, fileFilters, formatFor } from "./formats/registry";
+import type { DocumentView, FormatPlugin, ViewContext } from "./formats/types";
 import { HistoryTree, type HistoryState } from "./history";
 import { classifyLink } from "./links";
-import { basename, samePath } from "./paths";
-import { Renderer, slugify } from "./render/renderer";
+import { basename, extname, samePath } from "./paths";
 import { DEFAULT_CONFIG, DEFAULT_SESSION, type Config, type Session } from "./state";
 import { dropIndex, indicesToClose, moveItem, type CloseScope } from "./tabops";
-import { showContextMenu } from "./ui/contextMenu";
-import { openDiagram } from "./ui/diagramViewer";
+import { showContextMenu, type MenuItem } from "./ui/contextMenu";
 import { pickForward, showHelp, showHistoryTree, showSettings } from "./ui/dialogs";
 import { Finder } from "./ui/find";
 import { el, topLayer } from "./ui/overlay";
@@ -21,17 +22,21 @@ const MAX_CLOSED = 20;
 type ScrollMode = "restore" | "keep" | "top" | { hash: string };
 
 class Tab {
-  /** Scroll container; each tab keeps its own so switching tabs is instant. */
-  readonly view = el("section", { className: "doc-view", tabIndex: -1 });
-  article: HTMLElement | null = null;
+  /** Holds the tab's document view; each tab keeps its own so switching tabs is instant. */
+  readonly frame = el("div", { className: "doc-frame" });
+  view: DocumentView | null = null;
+  /** Format of `view`, null for error views. */
+  format: FormatPlugin | null = null;
   /** History node currently shown, -1 when nothing is rendered yet. */
   renderedNode = -1;
   stale = true;
   /** Increments per render; late results of superseded renders are dropped. */
   token = 0;
+  /** Zoom the view was last rendered with. */
+  zoom = 0;
 
   constructor(public history: HistoryTree) {
-    this.view.hidden = true;
+    this.frame.hidden = true;
   }
 
   get path(): string {
@@ -41,6 +46,18 @@ class Tab {
   get title(): string {
     return this.history.current.title || basename(this.path);
   }
+
+  setView(view: DocumentView, format: FormatPlugin | null): void {
+    this.view?.dispose();
+    this.view = view;
+    this.format = format;
+    this.frame.replaceChildren(view.element);
+  }
+
+  /** Remembers the reading position of the current history node. */
+  saveScroll(): void {
+    if (this.view && this.renderedNode === this.history.current.id) this.history.current.scroll = this.view.element.scrollTop;
+  }
 }
 
 export class App {
@@ -48,24 +65,25 @@ export class App {
   private active: Tab | null = null;
   private config: Config = DEFAULT_CONFIG;
   private session: Session = DEFAULT_SESSION;
-  private renderer!: Renderer;
   private docs = document.getElementById("docs")!;
   private tabbar = document.getElementById("tabbar")!;
   private toc = new Toc();
-  private finder = new Finder(() => this.active?.article ?? null);
-  /** Canonical path -> file content; dropped when the file changes on disk. */
-  private sources = new Map<string, string>();
+  private finder = new Finder(
+    () => this.active?.view?.find ?? null,
+    () => this.active?.view?.element.focus({ preventScroll: true }),
+  );
   private welcome: HTMLElement | null = null;
   private saveTimer?: number;
   private watched = "";
   private changeTimers = new Map<string, number>();
 
   async start(): Promise<void> {
-    this.config = { ...DEFAULT_CONFIG, ...(await backend.loadState<Config>("config")) };
+    const saved = await backend.loadState<Partial<Config>>("config");
+    this.config = { ...DEFAULT_CONFIG, ...saved };
     this.session = { ...DEFAULT_SESSION, ...(await backend.loadState<Session>("session")) };
     initTheme(this.config.theme, () => this.rerenderAll());
-    this.renderer = new Renderer(this.config.plugins);
-    this.applyZoom(this.session.zoom, false);
+    for (const format of FORMATS) format.configure?.(this.config);
+    this.session.zoom = this.clampZoom(this.session.zoom);
     this.toc.visible = this.session.toc;
     this.bindEvents();
 
@@ -84,6 +102,12 @@ export class App {
     await backend.showWindow();
   }
 
+  private viewContext(): ViewContext {
+    return { theme: effectiveTheme(), zoom: this.session.zoom };
+  }
+
+  private isViewable = (path: string) => formatFor(path, this.config) !== null;
+
   // ---------------------------------------------------------------- tabs
 
   async openFiles(paths: string[]): Promise<void> {
@@ -95,18 +119,13 @@ export class App {
 
   /** Returns the tab showing `path`, creating it when needed (not activated). */
   private async openFile(path: string): Promise<Tab> {
-    const canonical = (await this.load(path).catch(() => null))?.path ?? path;
+    const canonical = await backend.resolvePath(path).catch(() => path);
     return this.tabs.find((t) => samePath(t.path, canonical)) ?? this.addTab(new HistoryTree(canonical));
   }
 
   private addTab(history: HistoryTree, index = this.tabs.length): Tab {
     const tab = new Tab(history);
-    tab.view.addEventListener("scroll", () => {
-      if (tab.renderedNode === tab.history.current.id) tab.history.current.scroll = tab.view.scrollTop;
-      if (tab === this.active) this.toc.sync(tab.view);
-      this.scheduleSave(1000);
-    });
-    this.docs.append(tab.view);
+    this.docs.append(tab.frame);
     this.tabs.splice(index, 0, tab);
     this.renderTabbar();
     this.scheduleSave();
@@ -114,14 +133,17 @@ export class App {
   }
 
   private async activate(tab: Tab): Promise<void> {
-    if (this.active && this.active !== tab) this.active.view.hidden = true;
+    if (this.active && this.active !== tab) this.active.frame.hidden = true;
     this.hideWelcome();
     this.active = tab;
-    tab.view.hidden = false;
+    tab.frame.hidden = false;
     this.renderTabbar();
     if (tab.stale || tab.renderedNode !== tab.history.current.id) await this.renderTab(tab, "restore");
-    else this.afterShow(tab);
-    tab.view.focus({ preventScroll: true });
+    else {
+      if (tab.zoom !== this.session.zoom) this.applyViewZoom(tab);
+      this.afterShow(tab);
+    }
+    tab.view?.element.focus({ preventScroll: true });
     this.scheduleSave();
   }
 
@@ -135,7 +157,9 @@ export class App {
     const closing = indicesToClose(this.tabs.length, index, scope).map((i) => this.tabs[i]);
     if (!closing.length) return;
     for (const t of closing) {
-      t.view.remove();
+      t.saveScroll();
+      t.view?.dispose();
+      t.frame.remove();
       this.session.closed.push(t.history.toJSON());
     }
     this.session.closed = this.session.closed.slice(-MAX_CLOSED);
@@ -165,7 +189,37 @@ export class App {
       { label: "Close all", action: () => this.closeTabs(tab, "all") },
       null,
       { label: "Reopen closed tab", hint: "Ctrl+Shift+T", disabled: !this.session.closed.length, action: () => this.reopenClosed() },
+      null,
+      ...this.openWithItems(tab.path),
     ]);
+  }
+
+  /** "Open with" entries for editors and advanced tools; Markdownz itself stays a viewer. */
+  private openWithItems(path: string): MenuItem[] {
+    const ext = extname(path);
+    const run = (action: () => Promise<void>) => () => void action().catch((e) => toast(`Cannot open: ${e}`));
+    const apps = this.config.openWith.filter((a) => !a.extensions?.length || a.extensions.includes(ext));
+    return [
+      ...apps.map((app) => ({ label: `Open in ${app.name}`, action: run(() => backend.openWith(path, app.program, app.args)) })),
+      {
+        label: "Open with…",
+        hint: "Ctrl+Shift+O",
+        action: run(async () => {
+          if (!backend.isMac) return backend.openWith(path);
+          const app = await backend.pickApplication();
+          if (app) await backend.openWith(path, "open", ["-a", app, "{file}"]);
+        }),
+      },
+      { label: "Show in folder", action: run(() => backend.revealFile(path)) },
+      { label: "Copy path", action: run(() => navigator.clipboard.writeText(path)) },
+    ];
+  }
+
+  private showOpenWithMenu(): void {
+    const tab = this.active;
+    if (!tab) return;
+    const anchor = this.tabbar.querySelector<HTMLElement>(".open-with")?.getBoundingClientRect();
+    showContextMenu(anchor ? anchor.right - 220 : 40, anchor ? anchor.bottom + 4 : 40, this.openWithItems(tab.path));
   }
 
   /**
@@ -226,44 +280,46 @@ export class App {
   }
 
   private async openDialog(): Promise<void> {
-    const paths = await backend.pickFiles();
+    const paths = await backend.pickFiles(fileFilters(this.config));
     if (paths.length) await this.openFiles(paths);
   }
 
   // ---------------------------------------------------------- rendering
 
-  private async load(path: string): Promise<backend.Doc> {
-    const doc = await backend.readDoc(path);
-    this.sources.set(doc.path, doc.content);
-    return doc;
-  }
-
   private async renderTab(tab: Tab, scroll: ScrollMode): Promise<void> {
     const node = tab.history.current;
     const token = ++tab.token;
-    let article: HTMLElement;
-    let ok = true;
-    try {
-      const content = this.sources.get(node.path) ?? (await this.load(node.path)).content;
-      article = await this.renderer.render(content, { docPath: node.path, theme: effectiveTheme() });
-    } catch (e) {
-      article = this.errorView(node.path, e);
-      ok = false;
+    const previousScroll = tab.view?.element.scrollTop ?? 0;
+    const format = formatFor(node.path, this.config);
+    let title: string | undefined;
+    let error: unknown = null;
+
+    if (!format) {
+      error = new Error(`No viewer is enabled for .${extname(node.path) || "(no extension)"} files.`);
+    } else {
+      // Views need to be in the DOM while loading (e.g. PDF layout measures its container).
+      if (!tab.view || tab.format !== format) tab.setView(format.createView(this.viewHost(tab)), format);
+      try {
+        ({ title } = await tab.view!.load(node.path, this.viewContext()));
+      } catch (e) {
+        error = e;
+      }
     }
     if (token !== tab.token) return;
-
-    const previousScroll = tab.view.scrollTop;
-    if (tab.article) tab.article.replaceWith(article);
-    else tab.view.append(article);
-    tab.article = article;
+    if (error) {
+      tab.setView(new ErrorView(node.path, error, "Use “Open with…” (Ctrl+Shift+O) to open it in another application."), null);
+    } else {
+      node.title = title;
+    }
     tab.renderedNode = node.id;
     tab.stale = false;
-    if (ok) node.title = article.querySelector("h1")?.textContent?.trim() || undefined;
+    tab.zoom = this.session.zoom;
 
-    if (scroll === "keep") tab.view.scrollTop = previousScroll;
-    else if (scroll === "restore") tab.view.scrollTop = node.scroll;
-    else if (scroll === "top") tab.view.scrollTop = 0;
-    else if (!this.scrollToId(tab, scroll.hash)) tab.view.scrollTop = 0;
+    const element = tab.view!.element;
+    if (scroll === "keep") element.scrollTop = previousScroll;
+    else if (scroll === "restore") element.scrollTop = node.scroll;
+    else if (scroll === "top") element.scrollTop = 0;
+    else if (!tab.view!.scrollToFragment(scroll.hash)) element.scrollTop = 0;
 
     if (tab === this.active) this.afterShow(tab);
     this.renderTabbar();
@@ -271,33 +327,46 @@ export class App {
     this.scheduleSave();
   }
 
-  private errorView(path: string, error: unknown): HTMLElement {
-    return el(
-      "article",
-      { className: "markdown-body mdz-error" },
-      el("h1", { textContent: "Cannot open document" }),
-      el("p", {}, el("code", { textContent: path })),
-      el("pre", { textContent: String(error) }),
-    );
+  private viewHost(tab: Tab) {
+    return {
+      followLink: (href: string, newTab: boolean) => {
+        if (tab === this.active) void this.followLink(href, newTab);
+      },
+      onScroll: () => {
+        tab.saveScroll();
+        if (tab === this.active && tab.view) this.toc.sync(tab.view);
+        this.scheduleSave(1000);
+      },
+    };
   }
 
   private afterShow(tab: Tab): void {
-    this.toc.build(tab.article, (heading) => heading.scrollIntoView({ block: "start" }));
+    if (!tab.view) return;
+    this.toc.build(tab.view.outline());
     this.toc.sync(tab.view);
     this.finder.refresh();
     void backend.setWindowTitle(`${tab.title} — Markdownz`);
   }
 
+  /** Theme or settings changed: refresh the active view now, the others when shown. */
   private rerenderAll(): void {
     for (const tab of this.tabs) tab.stale = true;
-    if (this.active) void this.renderTab(this.active, "keep");
+    const tab = this.active;
+    if (!tab?.view || !tab.format) return;
+    if (formatFor(tab.path, this.config) !== tab.format) {
+      void this.renderTab(tab, "keep");
+      return;
+    }
+    const scroll = tab.view.element.scrollTop;
+    void tab.view.refresh(this.viewContext()).then(() => {
+      tab.stale = false;
+      tab.view!.element.scrollTop = scroll;
+      this.afterShow(tab);
+    });
   }
 
   private reload(): void {
-    const tab = this.active;
-    if (!tab) return;
-    this.sources.delete(tab.path);
-    void this.renderTab(tab, "keep");
+    if (this.active) void this.renderTab(this.active, "keep");
   }
 
   /** Called by the file watcher; debounced because editors often write in several steps. */
@@ -308,14 +377,13 @@ export class App {
       key,
       window.setTimeout(async () => {
         this.changeTimers.delete(key);
-        for (const cached of [...this.sources.keys()]) if (samePath(cached, path)) this.sources.delete(cached);
         for (const tab of this.tabs.filter((t) => samePath(t.path, path))) {
-          // A save may briefly remove the file; give it one more chance before showing an error.
-          await this.load(tab.path).catch(() => new Promise((r) => setTimeout(r, 300)));
+          // A save may briefly remove the file; give it a moment before reloading.
+          await backend.resolvePath(tab.path).catch(() => new Promise((r) => setTimeout(r, 300)));
           if (tab === this.active) await this.renderTab(tab, "keep");
           else tab.stale = true;
         }
-      }, 120),
+      }, 150),
     );
   }
 
@@ -332,18 +400,18 @@ export class App {
   private async followLink(href: string, newTab: boolean): Promise<void> {
     const tab = this.active;
     if (!tab) return;
-    const target = classifyLink(href, tab.path);
+    const target = classifyLink(href, tab.path, this.isViewable);
     if (!target) return;
     try {
       switch (target.kind) {
         case "anchor":
-          this.scrollToId(tab, target.id);
+          tab.view?.scrollToFragment(target.id);
           break;
         case "external":
           await backend.openExternal(target.url);
           break;
         case "file":
-          toast(`Not a Markdown file, showing it in the file manager: ${basename(target.path)}`);
+          toast(`No viewer for this file type, showing it in the file manager: ${basename(target.path)}`);
           await backend.revealFile(target.path);
           break;
         case "doc":
@@ -357,20 +425,20 @@ export class App {
   }
 
   private async navigate(tab: Tab, path: string, hash: string): Promise<void> {
-    const doc = await this.load(path);
-    if (samePath(doc.path, tab.path)) {
-      if (hash) this.scrollToId(tab, hash);
+    const canonical = await backend.resolvePath(path);
+    if (samePath(canonical, tab.path)) {
+      if (hash) tab.view?.scrollToFragment(hash);
       return;
     }
-    tab.history.current.scroll = tab.view.scrollTop;
-    tab.history.navigate(doc.path);
+    tab.saveScroll();
+    tab.history.navigate(canonical);
     await this.renderTab(tab, hash ? { hash } : "top");
   }
 
   private async back(): Promise<void> {
     const tab = this.active;
     if (!tab?.history.canBack) return;
-    tab.history.current.scroll = tab.view.scrollTop;
+    tab.saveScroll();
     tab.history.back();
     await this.renderTab(tab, "restore");
   }
@@ -379,7 +447,7 @@ export class App {
     const tab = this.active;
     if (!tab?.history.canForward) return;
     const go = async (id: number) => {
-      tab.history.current.scroll = tab.view.scrollTop;
+      tab.saveScroll();
       tab.history.forward(id);
       await this.renderTab(tab, "restore");
     };
@@ -393,33 +461,28 @@ export class App {
     if (!tab) return;
     showHistoryTree(tab.history, (node) => {
       if (node.id === tab.history.current.id) return;
-      tab.history.current.scroll = tab.view.scrollTop;
+      tab.saveScroll();
       tab.history.goto(node.id);
       void this.renderTab(tab, "restore");
     });
   }
 
-  private scrollToId(tab: Tab, id: string): boolean {
-    const article = tab.article;
-    if (!article || !id) return false;
-    const target =
-      article.querySelector<HTMLElement>(`[id="${CSS.escape(id)}"], [name="${CSS.escape(id)}"]`) ??
-      article.querySelector<HTMLElement>(`[id="${CSS.escape(slugify(id))}"]`);
-    target?.scrollIntoView({ block: "start" });
-    return !!target;
-  }
-
   // ---------------------------------------------------------------- zoom
 
+  private clampZoom(zoom: number): number {
+    return Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom || 1)) * 100) / 100;
+  }
+
   private applyZoom(zoom: number, announce = true): void {
-    zoom = Math.round(Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom)) * 100) / 100;
-    const view = this.active?.view;
-    const ratio = view && view.scrollHeight > 0 ? view.scrollTop / view.scrollHeight : 0;
-    this.session.zoom = zoom;
-    this.docs.style.setProperty("--zoom", String(zoom));
-    if (view) view.scrollTop = ratio * view.scrollHeight;
-    if (announce) toast(`${Math.round(zoom * 100)} %`);
+    this.session.zoom = this.clampZoom(zoom);
+    if (this.active) this.applyViewZoom(this.active);
+    if (announce) toast(`${Math.round(this.session.zoom * 100)} %`);
     this.scheduleSave();
+  }
+
+  private applyViewZoom(tab: Tab): void {
+    tab.view?.setZoom(this.session.zoom);
+    tab.zoom = this.session.zoom;
   }
 
   // ------------------------------------------------------------ session
@@ -443,14 +506,22 @@ export class App {
     await backend.closeWindow();
   }
 
+  private async print(): Promise<void> {
+    const view = this.active?.view;
+    if (view?.print) return view.print();
+    document.getElementById("mdz-print")?.remove();
+    await backend.printPage();
+  }
+
   private async updateConfig(config: Config): Promise<void> {
     const themeChanged = config.theme !== this.config.theme;
-    const pluginsChanged = JSON.stringify(config.plugins) !== JSON.stringify(this.config.plugins);
+    const settingsChanged =
+      JSON.stringify([config.plugins, config.formats]) !== JSON.stringify([this.config.plugins, this.config.formats]);
     this.config = config;
     await backend.saveState("config", config);
-    if (pluginsChanged) this.renderer.configure(config.plugins);
+    if (settingsChanged) for (const format of FORMATS) format.configure?.(config);
     if (themeChanged) setTheme(config.theme); // re-renders via the theme listener when needed
-    if (pluginsChanged) this.rerenderAll();
+    if (settingsChanged) this.rerenderAll();
   }
 
   // ------------------------------------------------------------------ UI
@@ -464,6 +535,8 @@ export class App {
     };
     const branches = tab?.history.current.children.length ?? 0;
     const forward = button(branches > 1 ? `→${branches}` : "→", branches > 1 ? `Forward (${branches} branches) — Alt+→` : "Forward — Alt+→", () => void this.forward(), !branches);
+    const openWith = button("↗", "Open with… — Ctrl+Shift+O", () => this.showOpenWithMenu(), !tab);
+    openWith.classList.add("open-with");
 
     const items = this.tabs.map((t) => {
       const item = el("div", { className: `tab${t === tab ? " active" : ""}`, title: t.path });
@@ -496,6 +569,7 @@ export class App {
       button("⑂", "History tree — Ctrl+H", () => this.showHistory(), !tab),
       el("div", { className: "tabs" }, ...items),
       button("+", "Open file — Ctrl+O", () => void this.openDialog()),
+      openWith,
       button("☰", "Table of contents — Ctrl+B", () => this.toggleToc()),
       button("⚙", "Settings — Ctrl+,", () => this.openSettings()),
       button("?", "Keyboard shortcuts — F1", showHelp),
@@ -515,15 +589,15 @@ export class App {
 
   private showWelcome(): void {
     void backend.setWindowTitle("Markdownz");
-    this.toc.build(null, () => {});
+    this.toc.build([]);
     if (this.welcome) return;
-    const open = el("button", { className: "primary", textContent: "Open Markdown file…" });
+    const open = el("button", { className: "primary", textContent: "Open document…" });
     open.addEventListener("click", () => void this.openDialog());
     this.welcome = el(
       "section",
       { className: "welcome" },
       el("h1", { textContent: "Markdownz" }),
-      el("p", { textContent: "Open a Markdown file or drop it here." }),
+      el("p", { textContent: "Open a Markdown or PDF document, or drop it here." }),
       open,
       el("p", { className: "mdz-hint", textContent: "Ctrl+O open · F1 shortcuts · Esc close" }),
     );
@@ -537,26 +611,6 @@ export class App {
 
   private bindEvents(): void {
     window.addEventListener("keydown", (e) => this.onKey(e), true);
-
-    this.docs.addEventListener("click", (e) => {
-      const target = e.target as Element;
-      const link = target.closest("a");
-      if (link) {
-        const href = link.getAttribute("href") ?? link.getAttribute("xlink:href");
-        e.preventDefault();
-        if (href) void this.followLink(href, e.ctrlKey || e.metaKey);
-        return;
-      }
-      const figure = target.closest<HTMLElement>("figure.mdz-diagram");
-      if (figure && !window.getSelection()?.toString()) openDiagram(figure);
-    });
-    this.docs.addEventListener("auxclick", (e) => {
-      const href = (e.target as Element).closest("a")?.getAttribute("href");
-      if (e.button === 1 && href) {
-        e.preventDefault();
-        void this.followLink(href, true);
-      }
-    });
     // Mouse back/forward buttons.
     window.addEventListener("mouseup", (e) => {
       if (e.button === 3) void this.back();
@@ -600,6 +654,7 @@ export class App {
       else if (key === "-" || e.code === "NumpadSubtract") this.applyZoom(this.session.zoom / 1.1);
       else if (key === "0" || e.code === "Numpad0") this.applyZoom(1);
       else if (key === "t" && e.shiftKey) this.reopenClosed();
+      else if (key === "o" && e.shiftKey) this.showOpenWithMenu();
       else if (key === "o" || key === "t") void this.openDialog();
       else if (key === "w") this.closeTab(this.active);
       else if (key === "tab") this.cycle(e.shiftKey ? -1 : 1);
@@ -614,7 +669,7 @@ export class App {
       else if (key === "b") this.toggleToc();
       else if (key === "h") this.showHistory();
       else if (key === ",") this.openSettings();
-      else if (key === "p") void backend.printPage();
+      else if (key === "p") void this.print();
       else if (key === "r") this.reload();
       else if (key === "[") void this.back();
       else if (key === "]") void this.forward();

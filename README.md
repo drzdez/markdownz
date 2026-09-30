@@ -1,24 +1,29 @@
 # Markdownz
 
-A fast, lightweight Markdown **viewer** for Windows, macOS and Linux.
-Double-click a `.md` file, read it, press <kbd>Esc</kbd>, done.
+A fast, lightweight **viewer** for Markdown and PDF documents on Windows, macOS and Linux.
+Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 
 - **Instant start.** Uses the system web view instead of bundling a browser, so installers are only a few MB.
 - **Rich rendering.** GitHub-flavored Markdown plus Mermaid, KaTeX math, Graphviz, syntax highlighting, alerts, footnotes, emoji and front matter. Each extra is a plugin you can switch off.
+- **PDF too.** PDFs open in the same tabs and history, with text selection, links, outline and find. Document formats are plugins, so more can follow.
+- **A viewer, not an editor.** Editing and advanced tools are one step away: **Open with…** hands the document to another application.
 - **Tabs that come back.** Open documents are restored with their scroll position and history the next time you start the app.
 - **Tree-shaped history.** Going back and following another link does not throw the old path away. **Forward** asks which branch to take, and <kbd>Ctrl</kbd>+<kbd>H</kbd> shows the whole tree.
 - **Live reload.** Save the file in your editor and the view updates without losing your place.
-- **Safe by default.** Scripts and event handlers in raw HTML are stripped, and nothing is downloaded at runtime. Links to local non-Markdown files are only revealed in the file manager, never executed.
+- **Safe by default.** Scripts and event handlers in raw HTML are stripped, JavaScript in PDFs is not run, and nothing is downloaded at runtime. Links to local files Markdownz cannot show are only revealed in the file manager, never executed.
 
 ## Features
 
 | Area | What you get |
 |---|---|
+| Formats | Markdown and PDF, each a format plugin that can be switched off in Settings |
 | Markdown | CommonMark + GFM tables, task lists, strikethrough, autolinks, raw HTML (sanitized), GitHub-compatible heading anchors |
 | Plugins | GitHub alerts (`> [!NOTE]`), footnotes, emoji shortcodes, front matter table, syntax highlighting, KaTeX math (`$…$`, `$$…$$`, fenced ```` ```math ````), Mermaid, Graphviz (```` ```dot ````) |
-| Navigation | Relative links to other `.md` files open in the same tab; <kbd>Ctrl</kbd>+click or middle click opens a new tab; `#anchors` work across files |
+| PDF | [pdf.js](https://mozilla.github.io/pdf.js/): pages rendered on demand, text selection, internal and external links, outline in the table of contents, find, zoom that re-renders sharply, `#page=N` links from Markdown, printing |
+| Navigation | Relative links to other `.md` and `.pdf` files open in the same tab; <kbd>Ctrl</kbd>+click or middle click opens a new tab; `#anchors` work across files |
 | Viewing | Zoom (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd>), table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
-| Integration | `.md` file association, single instance (opening another file adds a tab), drag and drop, command line `markdownz file.md …` |
+| Open with | Menu (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>, the ↗ button or right click on a tab): the system "choose an application" dialog, your own applications from `config.json`, show in folder, copy path |
+| Integration | `.md` and `.pdf` file associations, single instance (opening another file adds a tab), drag and drop, command line `markdownz file.md …` |
 
 Try [`samples/demo.md`](samples/demo.md) for a tour of everything.
 
@@ -42,8 +47,9 @@ On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Press <kbd>F1</kbd> in t
 | <kbd>Ctrl</kbd>+<kbd>B</kbd> | Toggle table of contents |
 | <kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> | Zoom |
 | <kbd>F5</kbd>, <kbd>Ctrl</kbd>+<kbd>R</kbd> | Reload |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> | Open with another application |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print / save as PDF |
-| <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings (theme, plugins) |
+| <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings (theme, formats, Markdown extensions) |
 
 ## How the history tree works
 
@@ -72,7 +78,29 @@ Download the installer for your platform from [Releases](https://github.com/drzd
 
 Flatpak: `flatpak install --user ./Markdownz_<version>_x86_64.flatpak` (needs the Flathub remote for the GNOME runtime; see [flatpak/README.md](flatpak/README.md), which also describes publishing on Flathub). Fedora Silverblue, Kinoite and Bazzite should prefer the Flatpak; Fedora Workstation can use the `.rpm` too.
 
-The installers register Markdownz as a viewer for `.md`, `.markdown` and similar extensions. To make it the default app, use "Open with → Always" (Windows/macOS) or `xdg-mime default markdownz.desktop text/markdown` (Linux).
+The installers register Markdownz for Markdown files (`.md`, `.markdown`, …) and PDF. Operating systems do not let an installer take over a file type silently, so confirm it once:
+
+| OS | Make Markdownz the default for `.md` and `.pdf` |
+|---|---|
+| Windows | Right click a file → *Open with* → *Choose another app* → Markdownz → *Always*, or *Settings → Apps → Default apps → Markdownz* |
+| macOS | *Get Info* on a file → *Open with: Markdownz* → *Change All…* |
+| Linux (deb/rpm) | `xdg-mime default Markdownz.desktop text/markdown application/pdf` |
+| Linux (Flatpak) | `xdg-mime default io.github.drzdez.markdownz.desktop text/markdown application/pdf`, or the file manager's *Open With* dialog |
+
+### Open with other applications
+
+**Open with…** shows the system chooser on Windows and Linux (via xdg-desktop-portal, also inside Flatpak) and an application picker on macOS. Frequently used applications can be added to the menu in `config.json` (location below):
+
+```json
+{
+  "openWith": [
+    { "name": "VS Code", "program": "code", "extensions": ["md"] },
+    { "name": "Okular", "program": "okular", "args": ["{file}"], "extensions": ["pdf"] }
+  ]
+}
+```
+
+`{file}` is replaced by the document path (appended when missing); `extensions` limits the entry to some formats. On macOS use `"program": "open", "args": ["-a", "Visual Studio Code", "{file}"]`.
 
 > [!NOTE]
 > The builds are not code-signed yet. Windows SmartScreen may warn on first run ("More info → Run anyway"). On macOS, right-click the app and choose Open the first time.
@@ -96,7 +124,7 @@ Other scripts:
 
 | Command | Purpose |
 |---|---|
-| `npm test` | Unit tests (paths, links, history tree) |
+| `npm test` | Unit tests (paths, links, history tree, tab operations) |
 | `npm run typecheck` | TypeScript check |
 | `npm run dev` | Frontend only, in a normal browser: <http://localhost:1420/?file=/samples/demo.md> |
 | `cargo test` (in `src-tauri`) | Rust tests |
@@ -108,26 +136,44 @@ Releases are built by GitHub Actions: push a tag such as `v0.1.0`, and [`release
 ```
 src/                     frontend (TypeScript, Vite)
   app.ts                 tabs, navigation, shortcuts, session
+  formats/               document format plugins: markdown.ts, pdf.ts (+ lazy pdfEngine.ts), registry.ts
   history.ts             tree-shaped history (pure, unit tested)
   links.ts, paths.ts     link classification and path resolution
   backend.ts             calls into Rust; plain-browser fallback for development
-  render/renderer.ts     markdown-it pipeline, plugin registry, sanitizing
-  render/plugins/        built-in plugins
+  render/renderer.ts     Markdown: markdown-it pipeline, extension registry, sanitizing
+  render/plugins/        Markdown extensions (alerts, math, Mermaid, Graphviz, …)
   ui/                    dialogs, find bar, TOC, diagram viewer, theme
 src-tauri/               native shell (Rust, Tauri 2)
-  src/lib.rs             file reading/watching, state files, single instance, file-open events
+  src/lib.rs             file reading/watching, state files, single instance, file-open events, open with
   tauri.conf.json        window, security policy (CSP), bundling, file associations
   capabilities/          what the web view is allowed to call
 ```
 
 Rendering pipeline: `markdown-it` + enabled plugins → HTML → [DOMPurify](https://github.com/cure53/DOMPurify) → DOM → plugin `postRender` hooks (Mermaid and Graphviz turn placeholders into SVG) → shown.
-Heavy libraries (Mermaid, Viz.js) load only when a document actually contains a diagram.
+Heavy libraries (Mermaid, Viz.js, pdf.js) load only when a document needs them. pdf.js data files (CMaps, fonts, decoders) are copied to `public/pdfjs` by `scripts/copy-pdfjs.mjs` before `dev` and `build`.
 
-State lives in the OS config directory (`%APPDATA%\io.github.drzdez.markdownz` on Windows, `~/Library/Application Support/io.github.drzdez.markdownz` on macOS, `~/.config/io.github.drzdez.markdownz` on Linux): `session.json` (tabs, history, zoom) and `config.json` (theme, plugins).
+State lives in the OS config directory (`%APPDATA%\io.github.drzdez.markdownz` on Windows, `~/Library/Application Support/io.github.drzdez.markdownz` on macOS, `~/.config/io.github.drzdez.markdownz` on Linux): `session.json` (tabs, history, zoom) and `config.json` (theme, formats, Markdown extensions, open-with applications).
 
-### Writing a plugin
+### Adding a document format
 
-A plugin is an object implementing `ViewerPlugin` ([`src/render/types.ts`](src/render/types.ts)); register it in `PLUGINS` in [`src/render/renderer.ts`](src/render/renderer.ts). It appears in Settings automatically.
+A format plugin implements `FormatPlugin` ([`src/formats/types.ts`](src/formats/types.ts)) and is registered in `FORMATS` in [`src/formats/registry.ts`](src/formats/registry.ts). It claims file extensions and creates a `DocumentView` per open document; the app provides tabs, history, session, file watching, the find bar, the table of contents (from `outline()`), zoom and printing around it.
+
+```ts
+export const asciidocFormat: FormatPlugin = {
+  id: "asciidoc",
+  name: "AsciiDoc",
+  description: ".adoc documents",
+  extensions: ["adoc", "asciidoc"],
+  defaultEnabled: true,
+  createView: (host) => new AsciidocView(host), // load(), refresh(), setZoom(), outline(), find, ...
+};
+```
+
+Also add the extensions to `fileAssociations` in `tauri.conf.json` and to `MimeType` in the Flatpak `.desktop` file.
+
+### Writing a Markdown extension
+
+A Markdown extension is an object implementing `ViewerPlugin` ([`src/render/types.ts`](src/render/types.ts)); register it in `PLUGINS` in [`src/render/renderer.ts`](src/render/renderer.ts). It appears in Settings automatically.
 
 ```ts
 export const plantumlPlugin: ViewerPlugin = {
@@ -145,7 +191,8 @@ export const plantumlPlugin: ViewerPlugin = {
 
 - PlantUML (needs Java or a server, so it would stay opt-in)
 - Code signing for Windows and macOS
-- Editing (not planned for now, Markdownz is a viewer)
+- More formats as plugins (images, AsciiDoc, …)
+- Editing stays out of scope: use **Open with…**
 
 ## License
 

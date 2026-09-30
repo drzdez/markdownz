@@ -22,6 +22,26 @@ export async function readDoc(path: string): Promise<Doc> {
   return { path, content: await res.text() };
 }
 
+/** Canonical absolute path of an existing file; rejects when it does not exist. */
+export async function resolvePath(path: string): Promise<string> {
+  return inTauri ? invoke<string>("resolve_path", { path }) : path;
+}
+
+export async function readBinary(path: string): Promise<Uint8Array> {
+  if (inTauri) return new Uint8Array(await invoke<ArrayBuffer>("read_binary", { path }));
+  const res = await fetch(path);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return new Uint8Array(await res.arrayBuffer());
+}
+
+/**
+ * Opens `path` in another application: `program` with `args` ("{file}" = path),
+ * or the system "choose an application" dialog when `program` is omitted.
+ */
+export async function openWith(path: string, program?: string, args?: string[]): Promise<void> {
+  if (inTauri) await invoke("open_with", { path, program: program ?? null, args: args ?? null });
+}
+
 export async function watchDocs(paths: string[]): Promise<void> {
   if (inTauri) await invoke("watch_docs", { paths });
 }
@@ -88,19 +108,20 @@ export async function revealFile(path: string): Promise<void> {
   await revealItemInDir(path);
 }
 
-export async function pickFiles(): Promise<string[]> {
+export async function pickFiles(filters: { name: string; extensions: string[] }[]): Promise<string[]> {
   if (!inTauri) return [];
   const { open } = await import("@tauri-apps/plugin-dialog");
-  const picked = await open({
-    multiple: true,
-    directory: false,
-    filters: [
-      { name: "Markdown", extensions: ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "mdtxt", "mdtext"] },
-      { name: "All files", extensions: ["*"] },
-    ],
-  });
-  return picked ?? [];
+  return (await open({ multiple: true, directory: false, filters })) ?? [];
 }
+
+/** Lets the user pick an application bundle (macOS has no system "open with" chooser). */
+export async function pickApplication(): Promise<string | null> {
+  if (!inTauri) return null;
+  const { open } = await import("@tauri-apps/plugin-dialog");
+  return open({ directory: true, multiple: false, defaultPath: "/Applications", title: "Choose an application" });
+}
+
+export const isMac = navigator.userAgent.includes("Mac");
 
 export async function printPage(): Promise<void> {
   if (inTauri) await invoke("print_page");

@@ -52,6 +52,78 @@ fn read_doc(path: String) -> Result<Doc, String> {
     })
 }
 
+/// Canonical path of an existing file.
+#[tauri::command]
+fn resolve_path(path: String) -> Result<String, String> {
+    let canonical = dunce::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
+    if !canonical.is_file() {
+        return Err(format!("{path}: not a file"));
+    }
+    Ok(canonical.to_string_lossy().into_owned())
+}
+
+/// Raw file content (PDF and other binary formats), sent as an ArrayBuffer.
+#[tauri::command]
+fn read_binary(path: String) -> Result<tauri::ipc::Response, String> {
+    let bytes = std::fs::read(&path).map_err(|e| format!("{path}: {e}"))?;
+    Ok(tauri::ipc::Response::new(bytes))
+}
+
+/// Opens `path` in another application: `program` with `args` ("{file}" is
+/// replaced by the path, which is appended when there is no placeholder), or
+/// the system "choose an application" dialog when `program` is None.
+#[tauri::command]
+async fn open_with(path: String, program: Option<String>, args: Option<Vec<String>>) -> Result<(), String> {
+    let file = dunce::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
+    if !file.is_file() {
+        return Err(format!("{path}: not a file"));
+    }
+    match program {
+        Some(program) => {
+            let file = file.to_string_lossy().into_owned();
+            let mut args = args.unwrap_or_default();
+            if !args.iter().any(|a| a.contains("{file}")) {
+                args.push("{file}".into());
+            }
+            std::process::Command::new(&program)
+                .args(args.iter().map(|a| a.replace("{file}", &file)))
+                .spawn()
+                .map(|_| ())
+                .map_err(|e| format!("{program}: {e}"))
+        }
+        None => choose_application(&file).await,
+    }
+}
+
+#[cfg(windows)]
+async fn choose_application(file: &Path) -> Result<(), String> {
+    // The shell's "How do you want to open this file?" dialog.
+    std::process::Command::new("rundll32.exe")
+        .arg("shell32.dll,OpenAs_RunDLL")
+        .arg(file)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "linux")]
+async fn choose_application(file: &Path) -> Result<(), String> {
+    use std::os::fd::AsFd;
+    let handle = std::fs::File::open(file).map_err(|e| e.to_string())?;
+    ashpd::desktop::open_uri::OpenFileRequest::default()
+        .ask(true)
+        .send_file(&handle.as_fd())
+        .await
+        .map(|_| ())
+        .map_err(|e| format!("xdg-desktop-portal: {e}"))
+}
+
+#[cfg(not(any(windows, target_os = "linux")))]
+async fn choose_application(_file: &Path) -> Result<(), String> {
+    // macOS has no system chooser; the frontend lets the user pick an app bundle instead.
+    Err("not supported on this platform".into())
+}
+
 #[tauri::command]
 fn watch_docs(paths: Vec<String>, state: State<'_, DocWatcher>) -> Result<(), String> {
     let files: Vec<PathBuf> = paths.iter().map(PathBuf::from).collect();
@@ -206,6 +278,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_doc,
+            resolve_path,
+            read_binary,
+            open_with,
             watch_docs,
             load_state,
             save_state,

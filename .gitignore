@@ -13,3 +13,6 @@ src-tauri/gen/schemas/
 flatpak/build/
 flatpak/repo/
 *.flatpak
+
+# pdf.js data copied by scripts/copy-pdfjs.mjs
+public/pdfjs/

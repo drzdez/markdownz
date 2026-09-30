@@ -13,6 +13,7 @@ A single page that exercises every built-in plugin. Open it with
   go back and press **Forward** (Alt+→): Markdownz asks which branch to follow.
 - [Jump to the math section](#math-katex)
 - [A heading in another file](linked-a.md#section-two)
+- [A PDF, opened on page 2](sample.pdf#page=2): PDFs open in the same tab and history
 - External: [mermaid.js.org](https://mermaid.js.org)
 
 ## Text and GFM

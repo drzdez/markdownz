@@ -1,12 +1,14 @@
 {
   "name": "markdownz",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Fast cross-platform Markdown viewer with Mermaid, math, diagrams and tabbed tree history.",
   "license": "MIT",
   "type": "module",
   "scripts": {
+    "predev": "node scripts/copy-pdfjs.mjs",
     "dev": "vite",
+    "prebuild": "node scripts/copy-pdfjs.mjs",
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -31,6 +33,7 @@
     "markdown-it-task-lists": "2.1.1",
     "markdown-it-texmath": "1.0.0",
     "mermaid": "12.0.0",
+    "pdfjs-dist": "6.3.289",
     "yaml": "2.9.1"
   },
   "devDependencies": {

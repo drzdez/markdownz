@@ -5,19 +5,20 @@
   <project_license>MIT</project_license>
 
   <name>Markdownz</name>
-  <summary>Read Markdown with diagrams and math</summary>
+  <summary>Read Markdown and PDF documents</summary>
   <developer id="io.github.drzdez">
     <name>drzdez</name>
   </developer>
 
   <description>
     <p>
-      Markdownz is a fast, lightweight viewer for Markdown documents. Open a file,
-      read it, press Escape and it is gone.
+      Markdownz is a fast, lightweight viewer for Markdown and PDF documents.
+      Open a file, read it, press Escape and it is gone.
     </p>
     <ul>
       <li>GitHub-flavored Markdown: tables, task lists, alerts, footnotes and emoji</li>
       <li>Mermaid and Graphviz diagrams, KaTeX math and syntax highlighting</li>
+      <li>PDF documents with text selection, links, outline and find</li>
       <li>Tabs that are restored on the next start</li>
       <li>Tree-shaped history: going back and following another link keeps both branches</li>
       <li>Live reload when the file changes, find in page, zoom and a table of contents</li>
@@ -64,6 +65,7 @@
   <provides>
     <binary>markdownz</binary>
     <mediatype>text/markdown</mediatype>
+    <mediatype>application/pdf</mediatype>
   </provides>
 
   <categories>
@@ -72,11 +74,17 @@
   </categories>
   <keywords>
     <keyword>markdown</keyword>
+    <keyword>pdf</keyword>
     <keyword>mermaid</keyword>
     <keyword>viewer</keyword>
   </keywords>
 
   <releases>
+    <release version="0.2.0" date="2026-09-30">
+      <description>
+        <p>PDF documents open in the same tabs and history. Documents can be handed to other applications with “Open with…”.</p>
+      </description>
+    </release>
     <release version="0.1.1" date="2026-09-30">
       <description>
         <p>Available as a Flatpak.</p>

@@ -1,7 +1,9 @@
-/** Table of contents sidebar built from the headings of the active document. */
+import type { DocumentView, OutlineItem } from "../formats/types";
+
+/** Table of contents sidebar built from the active document's outline. */
 export class Toc {
   private nav = document.getElementById("toc")!;
-  private links: { heading: HTMLElement; link: HTMLElement }[] = [];
+  private entries: { item: OutlineItem; link: HTMLElement }[] = [];
 
   get visible(): boolean {
     return !this.nav.hidden;
@@ -11,39 +13,41 @@ export class Toc {
     this.nav.hidden = !on;
   }
 
-  build(article: HTMLElement | null, scrollTo: (el: HTMLElement) => void): void {
+  build(items: OutlineItem[]): void {
     this.nav.replaceChildren();
-    this.links = [];
-    const headings = article ? [...article.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")] : [];
-    if (!headings.length) {
-      this.nav.append(Object.assign(document.createElement("p"), { className: "mdz-hint", textContent: "No headings" }));
+    this.entries = [];
+    if (!items.length) {
+      this.nav.append(Object.assign(document.createElement("p"), { className: "mdz-hint", textContent: "No outline" }));
       return;
     }
-    const minLevel = Math.min(...headings.map((h) => Number(h.tagName[1])));
-    for (const heading of headings) {
+    const minLevel = Math.min(...items.map((i) => i.level));
+    for (const item of items) {
       const link = document.createElement("a");
-      link.textContent = heading.textContent;
-      link.href = `#${heading.id}`;
-      link.style.paddingLeft = `${(Number(heading.tagName[1]) - minLevel) * 12 + 12}px`;
+      link.textContent = item.title;
+      link.href = "#";
+      link.title = item.title;
+      link.style.paddingLeft = `${(item.level - minLevel) * 12 + 12}px`;
       link.addEventListener("click", (e) => {
         e.preventDefault();
-        scrollTo(heading);
+        item.activate();
       });
       this.nav.append(link);
-      this.links.push({ heading, link });
+      this.entries.push({ item, link });
     }
   }
 
-  /** Highlights the section currently at the top of the viewport. */
-  sync(container: HTMLElement): void {
-    if (!this.visible || !this.links.length) return;
-    const top = container.getBoundingClientRect().top + 16;
-    let active = this.links[0];
-    for (const entry of this.links) {
-      if (entry.heading.getBoundingClientRect().top <= top) active = entry;
+  /** Highlights the entry of the section currently being read. */
+  sync(view: DocumentView): void {
+    if (!this.visible) return;
+    const tracked = this.entries.filter((e) => e.item.position);
+    if (!tracked.length) return;
+    const here = view.position();
+    let active = tracked[0];
+    for (const entry of tracked) {
+      if (entry.item.position!() <= here) active = entry;
       else break;
     }
-    for (const { link } of this.links) link.classList.toggle("active", link === active.link);
+    for (const { link } of this.entries) link.classList.toggle("active", link === active.link);
     active.link.scrollIntoView({ block: "nearest" });
   }
 }

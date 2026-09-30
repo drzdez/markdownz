@@ -2,10 +2,18 @@
 // The frontend never touches the file system directly; these only compute strings
 // that the backend later canonicalizes.
 
-const MARKDOWN_EXT = /\.(md|markdown|mdown|mkd|mkdn|mdwn|mdtxt|mdtext)$/i;
+/** Lower-case extension without the dot, "" when there is none. */
+export function extname(p: string): string {
+  const name = basename(p);
+  const dot = name.lastIndexOf(".");
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : "";
+}
 
-export function isMarkdownPath(p: string): boolean {
-  return MARKDOWN_EXT.test(p);
+/** file:// URL for an absolute path (used as base URL for links inside PDFs). */
+export function toFileUrl(p: string): string {
+  const slashed = p.replace(/\\/g, "/");
+  const prefixed = slashed.startsWith("/") ? slashed : `/${slashed}`;
+  return `file://${encodeURI(prefixed).replace(/#/g, "%23").replace(/\?/g, "%3F")}`;
 }
 
 export function isAbsolute(p: string): boolean {

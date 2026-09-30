@@ -1,5 +1,6 @@
 import type { HistoryNode, HistoryTree } from "../history";
 import { basename } from "../paths";
+import { FORMATS, isFormatEnabled } from "../formats/registry";
 import { PLUGINS, isEnabled } from "../render/renderer";
 import type { Config, ThemeSetting } from "../state";
 import { el, openModal } from "./overlay";
@@ -88,19 +89,33 @@ export function showSettings(config: Config, onChange: (config: Config) => void)
     themeGroup.append(el("label", {}, input, ` ${label}`));
   }
 
-  const pluginGroup = el("fieldset", {}, el("legend", { textContent: "Plugins" }));
-  for (const plugin of PLUGINS) {
-    const input = el("input", { type: "checkbox", checked: isEnabled(plugin, config.plugins) });
+  const option = (name: string, description: string, checked: boolean, change: (on: boolean) => void) => {
+    const input = el("input", { type: "checkbox", checked });
     input.dataset.nav = "";
-    input.addEventListener("change", () => {
-      config = { ...config, plugins: { ...config.plugins, [plugin.id]: input.checked } };
-      onChange(config);
-    });
-    pluginGroup.append(
-      el("label", { className: "mdz-plugin" }, input, el("span", { textContent: plugin.name }), el("small", { textContent: plugin.description })),
+    input.addEventListener("change", () => change(input.checked));
+    return el("label", { className: "mdz-plugin" }, input, el("span", { textContent: name }), el("small", { textContent: description }));
+  };
+
+  const formatGroup = el("fieldset", {}, el("legend", { textContent: "Document formats" }));
+  for (const format of FORMATS) {
+    formatGroup.append(
+      option(format.name, format.description, isFormatEnabled(format, config), (on) => {
+        config = { ...config, formats: { ...config.formats, [format.id]: on } };
+        onChange(config);
+      }),
     );
   }
-  openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, pluginGroup));
+
+  const pluginGroup = el("fieldset", {}, el("legend", { textContent: "Markdown extensions" }));
+  for (const plugin of PLUGINS) {
+    pluginGroup.append(
+      option(plugin.name, plugin.description, isEnabled(plugin, config.plugins), (on) => {
+        config = { ...config, plugins: { ...config.plugins, [plugin.id]: on } };
+        onChange(config);
+      }),
+    );
+  }
+  openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, formatGroup, pluginGroup));
 }
 
 const SHORTCUTS: [string, string][] = [
@@ -120,6 +135,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl+B", "Toggle table of contents"],
   ["Ctrl+wheel · Ctrl+ + / − / 0", "Zoom in / out / reset"],
   ["F5 · Ctrl+R", "Reload document"],
+  ["Ctrl+Shift+O", "Open with another application (editor, …)"],
   ["Ctrl+P", "Print / save as PDF"],
   ["Ctrl+,", "Settings and plugins"],
   ["Click a diagram", "Enlarge; wheel zooms, drag pans"],
