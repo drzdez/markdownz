@@ -95,6 +95,7 @@
       "rpm": {
         "desktopTemplate": "linux/markdownz.desktop"
       }
-    }
+    },
+    "publisher": "drzdez"
   }
 }
