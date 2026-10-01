@@ -128,6 +128,41 @@ export async function pickApplication(): Promise<string | null> {
 
 export const isMac = navigator.userAgent.includes("Mac");
 
+export interface AvailableUpdate {
+  current: string;
+  version: string;
+  notes?: string;
+  mode: "self" | "manual";
+  install(onProgress: (fraction: number | null) => void): Promise<void>;
+}
+
+/** Asks the update endpoint for a newer version; null when up to date or outside Tauri. */
+export async function checkForUpdate(): Promise<AvailableUpdate | null> {
+  if (!inTauri) return null;
+  const { check } = await import("@tauri-apps/plugin-updater");
+  const update = await check();
+  if (!update) return null;
+  const mode = await invoke<"self" | "manual">("update_mode");
+  return {
+    current: update.currentVersion,
+    version: update.version,
+    notes: update.body ?? undefined,
+    mode,
+    async install(onProgress) {
+      let total = 0;
+      let done = 0;
+      await update.downloadAndInstall((event) => {
+        if (event.event === "Started") total = event.data.contentLength ?? 0;
+        else if (event.event === "Progress") done += event.data.chunkLength;
+        onProgress(total ? Math.min(1, done / total) : null);
+      });
+      // On Windows the installer closes the app itself; elsewhere restart into the new version.
+      const { relaunch } = await import("@tauri-apps/plugin-process");
+      await relaunch();
+    },
+  };
+}
+
 export async function printPage(): Promise<void> {
   if (inTauri) await invoke("print_page");
   else window.print();

@@ -109,6 +109,17 @@ fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// "self" when the updater can install new versions in place, "manual" when the
+/// package is managed elsewhere (Flatpak, .deb, .rpm: only AppImage self-updates on Linux).
+#[tauri::command]
+fn update_mode() -> &'static str {
+    if cfg!(target_os = "linux") && (std::env::var_os("FLATPAK_ID").is_some() || std::env::var_os("APPIMAGE").is_none()) {
+        "manual"
+    } else {
+        "self"
+    }
+}
+
 #[cfg(windows)]
 async fn choose_application(file: &Path) -> Result<(), String> {
     // The shell's "How do you want to open this file?" dialog.
@@ -269,6 +280,8 @@ pub fn run() {
         .plugin(tauri_plugin_window_state::Builder::default().build())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(Pending { ready: false, files: startup }))
         .setup(|app| {
             let files = Arc::new(Mutex::new(HashSet::new()));
@@ -296,6 +309,7 @@ pub fn run() {
             read_binary,
             open_with,
             open_folder,
+            update_mode,
             watch_docs,
             load_state,
             save_state,

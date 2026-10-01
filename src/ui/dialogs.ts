@@ -72,7 +72,7 @@ export function showHistoryTree(tree: HistoryTree, onPick: (node: HistoryNode) =
   body.querySelector<HTMLElement>(".current")?.focus();
 }
 
-export function showSettings(config: Config, onChange: (config: Config) => void): void {
+export function showSettings(config: Config, onChange: (config: Config) => void, checkNow: () => void): void {
   const themes: [ThemeSetting, string][] = [
     ["auto", "Follow system"],
     ["light", "Light"],
@@ -115,7 +115,25 @@ export function showSettings(config: Config, onChange: (config: Config) => void)
       }),
     );
   }
-  openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, formatGroup, pluginGroup));
+  const daily = el("input", { type: "checkbox", checked: config.checkUpdates });
+  daily.dataset.nav = "";
+  daily.addEventListener("change", () => {
+    config = { ...config, checkUpdates: daily.checked };
+    onChange(config);
+  });
+  const now = el("button", { className: "mdz-settings-button", textContent: "Check now" });
+  const updateGroup = el(
+    "fieldset",
+    {},
+    el("legend", { textContent: "Updates" }),
+    el("label", {}, daily, " Check for a new version once a day"),
+    now,
+  );
+  const layer = openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, formatGroup, pluginGroup, updateGroup));
+  now.addEventListener("click", () => {
+    layer.close();
+    checkNow();
+  });
 }
 
 const SHORTCUTS: [string, string][] = [

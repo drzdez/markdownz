@@ -803,6 +803,40 @@ mark.mdz-find.current {
   color: var(--muted);
 }
 
+.mdz-settings-button {
+  margin-top: 4px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mdz-update {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mdz-update p {
+  margin: 0;
+}
+
+.mdz-update-notes {
+  max-height: 30vh;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  background: var(--chrome);
+  border-radius: 6px;
+  white-space: pre-wrap;
+  font-size: 12px;
+}
+
+.mdz-update progress {
+  width: 100%;
+}
+
 .mdz-shortcuts {
   width: 100%;
   border-collapse: collapse;

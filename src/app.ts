@@ -4,6 +4,8 @@ import { FORMATS, fileFilters, formatFor } from "./formats/registry";
 import type { DocumentView, FormatPlugin, ViewContext } from "./formats/types";
 import { HistoryTree, type HistoryState } from "./history";
 import { markMissing, relativeTime, touchRecent, type RecentDoc } from "./recent";
+import { shouldCheck, shouldOffer } from "./update";
+import { showUpdateDialog } from "./ui/updateDialog";
 import { classifyLink } from "./links";
 import { basename, dirname, extname, samePath } from "./paths";
 import { DEFAULT_CONFIG, DEFAULT_SESSION, type Config, type Session } from "./state";
@@ -104,6 +106,38 @@ export class App {
     else if (restored) await this.activate(restored);
     else this.showWelcome();
     await backend.showWindow();
+    if (this.config.checkUpdates && shouldCheck(this.config.lastUpdateCheck, Date.now())) void this.checkUpdates(false);
+  }
+
+  /**
+   * Looks for a new version. Automatic checks (at start, at most once a day)
+   * stay silent when there is nothing to offer or the network fails; a manual
+   * check reports the result and ignores a skipped version.
+   */
+  async checkUpdates(manual: boolean): Promise<void> {
+    this.config = { ...this.config, lastUpdateCheck: Date.now() };
+    void backend.saveState("config", this.config);
+    let update: backend.AvailableUpdate | null;
+    try {
+      update = await backend.checkForUpdate();
+    } catch (e) {
+      if (manual) toast(`Cannot check for updates: ${e}`);
+      return;
+    }
+    if (!update || !shouldOffer(update.current, update.version, manual ? undefined : this.config.skippedVersion)) {
+      if (manual) toast(update ? `Markdownz ${update.current} is up to date.` : "Markdownz is up to date.");
+      return;
+    }
+    const available = update;
+    showUpdateDialog({
+      ...available,
+      install: (onProgress) => available.install(onProgress),
+      openDownloadPage: () => backend.openExternal(`https://github.com/drzdez/markdownz/releases/tag/v${available.version}`),
+      skip: () => {
+        this.config = { ...this.config, skippedVersion: available.version };
+        void backend.saveState("config", this.config);
+      },
+    });
   }
 
   private viewContext(): ViewContext {
@@ -658,7 +692,7 @@ export class App {
   }
 
   private openSettings(): void {
-    showSettings(this.config, (config) => void this.updateConfig(config));
+    showSettings(this.config, (config) => void this.updateConfig(config), () => void this.checkUpdates(true));
   }
 
   private showWelcome(): void {

@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.3.2" date="2026-10-01">
+      <description>
+        <p>Checks for a new version once a day and offers to install it. The installer publisher is now drzdez.</p>
+      </description>
+    </release>
     <release version="0.3.1" date="2026-10-01">
       <description>
         <p>Recent documents on the start page and in the open menu, with a folder button and detection of deleted files. Print margins can also apply at the fold.</p>

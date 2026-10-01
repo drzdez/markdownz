@@ -25,6 +25,12 @@ export interface Config {
   openWith: OpenWithApp[];
   /** Last used print settings. */
   print?: PrintOptions;
+  /** Check for a new version once a day at start. */
+  checkUpdates: boolean;
+  /** Time of the last update check (ms since epoch). */
+  lastUpdateCheck?: number;
+  /** Version the user chose to skip. */
+  skippedVersion?: string;
 }
 
 /** Open tabs etc., stored as `session.json`; restored on the next start. */
@@ -39,6 +45,6 @@ export interface Session {
   recent: RecentDoc[];
 }
 
-export const DEFAULT_CONFIG: Config = { theme: "auto", plugins: {}, formats: {}, openWith: [] };
+export const DEFAULT_CONFIG: Config = { theme: "auto", plugins: {}, formats: {}, openWith: [], checkUpdates: true };
 
 export const DEFAULT_SESSION: Session = { tabs: [], active: 0, zoom: 1, toc: false, closed: [], recent: [] };

@@ -4,6 +4,7 @@ import { classifyLink } from "./links";
 import { basename, dirname, extname, resolvePath, samePath, toFileUrl } from "./paths";
 import { dropIndex, indicesToClose, moveItem } from "./tabops";
 import { MAX_RECENT, markMissing, relativeTime, touchRecent } from "./recent";
+import { CHECK_INTERVAL_MS, compareVersions, shouldCheck, shouldOffer } from "./update";
 
 describe("paths", () => {
   it("resolves POSIX paths", () => {
@@ -179,5 +180,30 @@ describe("recent documents", () => {
     expect(relativeTime(now - 30 * 3_600_000, now)).toBe("yesterday");
     expect(relativeTime(now - 4 * 86_400_000, now)).toBe("4 days ago");
     expect(relativeTime(Date.UTC(2026, 0, 2), now)).toBe("2026-01-02");
+  });
+});
+
+describe("update checks", () => {
+  const day = CHECK_INTERVAL_MS;
+
+  it("checks at most once a day", () => {
+    expect(shouldCheck(undefined, 1000)).toBe(true);
+    expect(shouldCheck(1000, 1000 + day - 1)).toBe(false);
+    expect(shouldCheck(1000, 1000 + day)).toBe(true);
+    expect(shouldCheck(5 * day, 2 * day)).toBe(true); // clock moved back
+  });
+
+  it("compares versions numerically", () => {
+    expect(compareVersions("0.10.0", "0.9.3")).toBe(1);
+    expect(compareVersions("v0.3.1", "0.3.1")).toBe(0);
+    expect(compareVersions("0.3", "0.3.1")).toBe(-1);
+    expect(compareVersions("1.0.0-beta.1", "1.0.0")).toBe(0);
+  });
+
+  it("offers newer versions unless skipped", () => {
+    expect(shouldOffer("0.3.1", "0.3.2", undefined)).toBe(true);
+    expect(shouldOffer("0.3.1", "0.3.2", "0.3.2")).toBe(false);
+    expect(shouldOffer("0.3.1", "0.3.3", "0.3.2")).toBe(true);
+    expect(shouldOffer("0.3.1", "0.3.1", undefined)).toBe(false);
   });
 });

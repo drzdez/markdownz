@@ -151,6 +151,12 @@ Other scripts:
 
 Releases are built by GitHub Actions: push a tag such as `v0.1.0`, and [`release.yml`](.github/workflows/release.yml) builds all platforms into a draft release. Bump `version` in `package.json` first; the app reads its version from there.
 
+### Updates
+
+The app checks `https://github.com/drzdez/markdownz/releases/latest/download/latest.json` at start, at most once a day (Settings → Updates, also *Check now*), and offers to install a newer version (*Install now / Later / Skip this version*). Updates are signed: the release workflow needs the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (created with `npx tauri signer generate`); the public key is in `tauri.conf.json`. Only published releases count as "latest". Flatpak, `.deb` and `.rpm` installations are updated by their package manager, so the app only points to the download page there.
+
+Local `npm run tauri build` also signs the updater artifacts, so set the same two variables first (or the build fails at the signing step).
+
 ## Architecture
 
 ```

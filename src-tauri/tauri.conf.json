@@ -96,6 +96,18 @@
         "desktopTemplate": "linux/markdownz.desktop"
       }
     },
-    "publisher": "drzdez"
+    "publisher": "drzdez",
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDM3RTE1NkQ0RDJCNjBFRjAKUldUd0RyYlMxRmJoTi9aTFRqVTY4MjZ1RkovZ05ROTNZYXdBNDZ1WkhHeTZGaVI1bXlJSkp1cisK",
+      "endpoints": [
+        "https://github.com/drzdez/markdownz/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
