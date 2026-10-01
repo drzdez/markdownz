@@ -8,7 +8,9 @@ import { basename, extname, samePath } from "./paths";
 import { DEFAULT_CONFIG, DEFAULT_SESSION, type Config, type Session } from "./state";
 import { dropIndex, indicesToClose, moveItem, type CloseScope } from "./tabops";
 import { showContextMenu, type MenuItem } from "./ui/contextMenu";
+import { DEFAULT_PRINT_OPTIONS } from "./print/imposition";
 import { pickForward, showHelp, showHistoryTree, showSettings } from "./ui/dialogs";
+import { openPrintDialog } from "./ui/printDialog";
 import { Finder } from "./ui/find";
 import { el, topLayer } from "./ui/overlay";
 import { effectiveTheme, initTheme, setTheme } from "./ui/theme";
@@ -190,6 +192,7 @@ export class App {
       null,
       { label: "Reopen closed tab", hint: "Ctrl+Shift+T", disabled: !this.session.closed.length, action: () => this.reopenClosed() },
       null,
+      { label: "Print…", hint: "Ctrl+P", disabled: tab !== this.active || !tab.view?.printPages, action: () => this.print() },
       ...this.openWithItems(tab.path),
     ]);
   }
@@ -219,7 +222,11 @@ export class App {
     const tab = this.active;
     if (!tab) return;
     const anchor = this.tabbar.querySelector<HTMLElement>(".open-with")?.getBoundingClientRect();
-    showContextMenu(anchor ? anchor.right - 220 : 40, anchor ? anchor.bottom + 4 : 40, this.openWithItems(tab.path));
+    showContextMenu(anchor ? anchor.right - 220 : 40, anchor ? anchor.bottom + 4 : 40, [
+      ...this.openWithItems(tab.path),
+      null,
+      { label: "Print…", hint: "Ctrl+P", disabled: !tab.view?.printPages, action: () => this.print() },
+    ]);
   }
 
   /**
@@ -506,11 +513,16 @@ export class App {
     await backend.closeWindow();
   }
 
-  private async print(): Promise<void> {
-    const view = this.active?.view;
-    if (view?.print) return view.print();
-    document.getElementById("mdz-print")?.remove();
-    await backend.printPage();
+  private print(): void {
+    const tab = this.active;
+    if (!tab?.view?.printPages) {
+      toast("This document cannot be printed.");
+      return;
+    }
+    openPrintDialog(tab.view, tab.title, { ...DEFAULT_PRINT_OPTIONS, ...this.config.print }, (options) => {
+      this.config = { ...this.config, print: { ...options } };
+      void backend.saveState("config", this.config);
+    });
   }
 
   private async updateConfig(config: Config): Promise<void> {
@@ -569,6 +581,7 @@ export class App {
       button("⑂", "History tree — Ctrl+H", () => this.showHistory(), !tab),
       el("div", { className: "tabs" }, ...items),
       button("+", "Open file — Ctrl+O", () => void this.openDialog()),
+      button("⎙", "Print — Ctrl+P", () => this.print(), !tab?.view?.printPages),
       openWith,
       button("☰", "Table of contents — Ctrl+B", () => this.toggleToc()),
       button("⚙", "Settings — Ctrl+,", () => this.openSettings()),
@@ -669,7 +682,7 @@ export class App {
       else if (key === "b") this.toggleToc();
       else if (key === "h") this.showHistory();
       else if (key === ",") this.openSettings();
-      else if (key === "p") void this.print();
+      else if (key === "p") this.print();
       else if (key === "r") this.reload();
       else if (key === "[") void this.back();
       else if (key === "]") void this.forward();

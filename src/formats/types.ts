@@ -43,6 +43,17 @@ export interface FindProvider {
   onResult?: (result: FindResult) => void;
 }
 
+/** A document laid out as printable pages (Markdown is paginated, PDF has pages). */
+export interface PrintPages {
+  count: number;
+  /** Page size in millimetres. */
+  size(index: number): { width: number; height: number };
+  /** A new element showing the page at its full size (called once per use). */
+  render(index: number): HTMLElement;
+  /** Releases resources (object URLs, measuring DOM). */
+  dispose(): void;
+}
+
 export interface DocumentView {
   /** Scroll container shown inside the tab (must be absolutely positioned by CSS). */
   readonly element: HTMLElement;
@@ -57,8 +68,8 @@ export interface DocumentView {
   outline(): OutlineItem[];
   /** Current reading position in the same units as OutlineItem.position. */
   position(): number;
-  /** Custom printing; the app prints the visible view when absent. */
-  print?(): Promise<void>;
+  /** Lays the document out as pages for the print dialog; documents without it cannot be printed. */
+  printPages?(paper: { width: number; height: number }, onProgress?: (done: number, total: number) => void): Promise<PrintPages>;
   dispose(): void;
 }
 

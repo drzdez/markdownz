@@ -1,4 +1,5 @@
 import type { HistoryState } from "./history";
+import type { PrintOptions } from "./print/imposition";
 
 export type ThemeSetting = "auto" | "light" | "dark";
 
@@ -21,6 +22,8 @@ export interface Config {
   /** Document format id -> enabled. */
   formats: Record<string, boolean>;
   openWith: OpenWithApp[];
+  /** Last used print settings. */
+  print?: PrintOptions;
 }
 
 /** Open tabs etc., stored as `session.json`; restored on the next start. */

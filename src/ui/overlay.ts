@@ -66,6 +66,8 @@ export function openModal(title: string, body: HTMLElement, options: ModalOption
     },
     onKey(e) {
       if (options.onKey?.(e, layer.close)) return true;
+      // Let text fields receive typing (and not trigger global shortcuts either).
+      if ((e.target as HTMLElement).matches?.('input[type="text"], input[type="search"], input[type="number"], textarea')) return false;
       if (arrowNav(modal, e)) return true;
       // Swallow everything else except Tab/Enter/Space so global shortcuts stay inactive.
       return !["Tab", "Enter", " "].includes(e.key);

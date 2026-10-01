@@ -220,6 +220,197 @@ button {
   display: none;
 }
 
+/* ---------------------------------------------------------------- paper */
+
+.mdz-sheet {
+  position: relative;
+  box-sizing: border-box;
+  display: grid;
+  overflow: hidden;
+  background: #fff;
+}
+
+.mdz-slot {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.mdz-page-frame {
+  position: absolute;
+  overflow: hidden;
+}
+
+/* Frame along the sheet margins: the edge of the printable area. */
+.mdz-margin-frame {
+  position: absolute;
+  border: 0.3mm solid #444;
+  pointer-events: none;
+}
+
+/* A real border (not a shadow) so it prints without "background graphics". */
+.mdz-page-border {
+  position: absolute;
+  inset: 0;
+  border: 0.3mm solid #444;
+  pointer-events: none;
+}
+
+.mdz-md-page {
+  box-sizing: border-box;
+  background: #fff;
+}
+
+.mdz-md-clip {
+  overflow: hidden;
+}
+
+.mdz-paper .markdown-body {
+  max-width: none;
+  padding: 0;
+  font-size: 15px;
+}
+
+.mdz-pdf-page {
+  display: block;
+}
+
+.mdz-measure {
+  position: fixed;
+  top: 0;
+  left: -100000px;
+}
+
+/* --------------------------------------------------------- print dialog */
+
+.mdz-modal.print {
+  width: min(1040px, 96vw);
+  max-height: 88vh;
+}
+
+.mdz-print {
+  display: grid;
+  grid-template-columns: 270px 1fr;
+  gap: 16px;
+  min-height: 0;
+}
+
+.mdz-print-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.mdz-print-form fieldset {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.mdz-print-form fieldset label {
+  display: block;
+  padding: 2px 0;
+}
+
+.mdz-field {
+  display: grid;
+  grid-template-columns: 92px 1fr;
+  align-items: center;
+  gap: 8px;
+}
+
+.mdz-field select,
+.mdz-field input {
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+}
+
+.mdz-print-form fieldset .mdz-field {
+  display: grid;
+}
+
+.mdz-print-form fieldset.mdz-placement {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mdz-scale {
+  display: grid;
+  grid-template-columns: 1fr 70px;
+  gap: 6px;
+  min-width: 0;
+}
+
+.mdz-print-buttons .spacer {
+  flex: 1;
+}
+
+.mdz-print-summary {
+  margin: 4px 0 0;
+  font-weight: 600;
+}
+
+.mdz-print-form .mdz-hint {
+  margin: 0;
+  padding: 0;
+}
+
+.mdz-print-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: auto;
+}
+
+.mdz-print-buttons button:not(.primary) {
+  padding: 8px 16px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.mdz-print-buttons .primary:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.mdz-print-preview {
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 14px;
+  max-height: 70vh;
+  overflow: auto;
+  padding: 12px;
+  background: var(--chrome);
+  border-radius: 8px;
+}
+
+.mdz-thumb {
+  margin: 0;
+}
+
+.mdz-thumb-sheet {
+  overflow: hidden;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+.mdz-thumb figcaption {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
 .doc-view > .markdown-body {
   zoom: var(--zoom, 1);
   max-width: 980px;
@@ -612,19 +803,27 @@ kbd {
     display: none !important;
   }
 
-  body.mdz-printing-pdf #app {
+  body.mdz-printing #app,
+  body.mdz-printing .mdz-backdrop,
+  body.mdz-printing #findbar,
+  body.mdz-printing #toast,
+  body.mdz-printing .mdz-menu {
     display: none !important;
   }
 
-  body.mdz-printing-pdf #mdz-print {
+  body.mdz-printing #mdz-print {
     display: block;
   }
 
-  #mdz-print img {
-    display: block;
-    width: 100%;
-    page-break-after: always;
+  #mdz-print .mdz-print-page {
+    overflow: hidden;
     break-after: page;
+    page-break-after: always;
+  }
+
+  #mdz-print .mdz-print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
   }
 
   .doc-view > .markdown-body {

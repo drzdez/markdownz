@@ -1,9 +1,15 @@
 import * as backend from "../backend";
+import { measureBreaks, paginate } from "../print/paginate";
+import { ensurePaperStyle, waitForImages } from "../print/printJob";
 import { Renderer, slugify } from "../render/renderer";
 import { openDiagram } from "../ui/diagramViewer";
 import { DomFindProvider } from "../ui/domFind";
 import { el } from "../ui/overlay";
-import type { DocumentView, FormatPlugin, OutlineItem, ViewContext, ViewHost } from "./types";
+import type { DocumentView, FormatPlugin, OutlineItem, PrintPages, ViewContext, ViewHost } from "./types";
+
+/** Printed page margin in mm. */
+const PAGE_MARGIN = 15;
+const PX_PER_MM = 96 / 25.4;
 
 let renderer: Renderer | null = null;
 let pluginSettings: Record<string, boolean> = {};
@@ -85,6 +91,38 @@ class MarkdownView implements DocumentView {
 
   position(): number {
     return this.element.scrollTop + 16;
+  }
+
+  /** Re-renders in the light theme at the paper's text width and splits it into pages. */
+  async printPages(paper: { width: number; height: number }): Promise<PrintPages> {
+    const contentWidth = paper.width - 2 * PAGE_MARGIN;
+    const contentHeight = paper.height - 2 * PAGE_MARGIN;
+    ensurePaperStyle();
+    const article = await getRenderer().render(this.source, { docPath: this.path, theme: "light" });
+    const measure = el("div", { className: "mdz-paper mdz-measure" }, article);
+    measure.style.width = `${contentWidth}mm`;
+    document.body.append(measure);
+    await waitForImages(measure);
+    await document.fonts.ready;
+    const { candidates, avoid, total } = measureBreaks(article);
+    const ranges = paginate(candidates, total, contentHeight * PX_PER_MM, avoid);
+    measure.remove();
+
+    return {
+      count: ranges.length,
+      size: () => paper,
+      render: (index) => {
+        const [start, end] = ranges[index];
+        const clone = article.cloneNode(true) as HTMLElement;
+        clone.style.marginTop = `${-start}px`;
+        const clip = el("div", { className: "mdz-md-clip" }, clone);
+        Object.assign(clip.style, { width: `${contentWidth}mm`, height: `${end - start}px` });
+        const page = el("div", { className: "mdz-md-page" }, clip);
+        page.style.padding = `${PAGE_MARGIN}mm`;
+        return page;
+      },
+      dispose: () => {},
+    };
   }
 
   dispose(): void {

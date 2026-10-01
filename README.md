@@ -6,6 +6,7 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 - **Instant start.** Uses the system web view instead of bundling a browser, so installers are only a few MB.
 - **Rich rendering.** GitHub-flavored Markdown plus Mermaid, KaTeX math, Graphviz, syntax highlighting, alerts, footnotes, emoji and front matter. Each extra is a plugin you can switch off.
 - **PDF too.** PDFs open in the same tabs and history, with text selection, links, outline and find. Document formats are plugins, so more can follow.
+- **Printing that thinks ahead.** 1, 2 or 4 pages per sheet, booklets, two-sided printing on any printer (also manually in two passes), with a preview.
 - **A viewer, not an editor.** Editing and advanced tools are one step away: **Open with…** hands the document to another application.
 - **Tabs that come back.** Open documents are restored with their scroll position and history the next time you start the app.
 - **Tree-shaped history.** Going back and following another link does not throw the old path away. **Forward** asks which branch to take, and <kbd>Ctrl</kbd>+<kbd>H</kbd> shows the whole tree.
@@ -22,6 +23,7 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 | PDF | [pdf.js](https://mozilla.github.io/pdf.js/): pages rendered on demand, text selection, internal and external links, outline in the table of contents, find, zoom that re-renders sharply, `#page=N` links from Markdown, printing |
 | Navigation | Relative links to other `.md` and `.pdf` files open in the same tab; <kbd>Ctrl</kbd>+click or middle click opens a new tab; `#anchors` work across files |
 | Viewing | Zoom (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd>), table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
+| Printing | Own print dialog with preview (<kbd>Ctrl</kbd>+<kbd>P</kbd> or ⎙): 1/2/4 pages per sheet, orientation by page or fixed, scale, alignment, margins, page frames, booklet (pages reordered for folding), two-sided via the printer or manually in two passes, page ranges, A4/Letter; paper is always light, Markdown is paginated between blocks |
 | Open with | Menu (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>, the ↗ button or right click on a tab): the system "choose an application" dialog, your own applications from `config.json`, show in folder, copy path |
 | Integration | `.md` and `.pdf` file associations, single instance (opening another file adds a tab), drag and drop, command line `markdownz file.md …` |
 
@@ -48,8 +50,25 @@ On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Press <kbd>F1</kbd> in t
 | <kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> | Zoom |
 | <kbd>F5</kbd>, <kbd>Ctrl</kbd>+<kbd>R</kbd> | Reload |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> | Open with another application |
-| <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print / save as PDF |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print (pages per sheet, booklet, two-sided, range) |
 | <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings (theme, formats, Markdown extensions) |
+
+## Printing
+
+<kbd>Ctrl</kbd>+<kbd>P</kbd> or the ⎙ button opens Markdownz's print dialog with a live preview of every sheet. Markdownz lays out the sheets itself and then hands them to the system print dialog, so the result is the same on every platform:
+
+| Option | What happens |
+|---|---|
+| 1 / 2 / 4 pages per sheet | Pages are scaled onto portrait (1, 4) or landscape (2) sheets |
+| Booklet | Pages are reordered and placed two per landscape sheet; print two-sided, fold the stack in the middle |
+| Orientation | *Auto (by page)* follows the pages: a landscape page gets a landscape sheet, two landscape pages are stacked on a portrait sheet. This also applies to two-sided printing (the flip edge follows the dominant orientation). *Portrait* / *Landscape* force it (Markdown is re-paginated for the wider landscape line) |
+| Two-sided (printer) | Choose *Print on both sides* in the system dialog; the hint says which edge to flip on (long for portrait sheets, short for landscape ones) |
+| Two-sided, manually | For printers without duplex: front sides first, then Markdownz tells you how to put the stack back and prints the back sides; *reverse order* helps with printers that stack differently |
+| Pages | `1-3, 5, 8-`; empty means all |
+| Reset | Back to the defaults: 1 page per sheet, orientation and scale automatic, two-sided on the long edge, no margins, no frames |
+| Placement | Scale: fit, % of the real page size, or a target page width or height in mm; horizontal and vertical alignment, margins of the physical sheet in mm, optional frames around each page and along the sheet margins |
+
+Markdown documents are split into pages between paragraphs, list items, table rows and code lines, never right after a heading. PDF pages are rendered at print resolution. The job sent to the printer always uses portrait paper and landscape sheets are rotated onto it, so portrait and landscape sheets can be mixed on every platform. In the system dialog keep the scale at 100 % / default.
 
 ## How the history tree works
 
@@ -124,7 +143,7 @@ Other scripts:
 
 | Command | Purpose |
 |---|---|
-| `npm test` | Unit tests (paths, links, history tree, tab operations) |
+| `npm test` | Unit tests (paths, links, history tree, tab operations, print imposition and pagination) |
 | `npm run typecheck` | TypeScript check |
 | `npm run dev` | Frontend only, in a normal browser: <http://localhost:1420/?file=/samples/demo.md> |
 | `cargo test` (in `src-tauri`) | Rust tests |
@@ -142,7 +161,8 @@ src/                     frontend (TypeScript, Vite)
   backend.ts             calls into Rust; plain-browser fallback for development
   render/renderer.ts     Markdown: markdown-it pipeline, extension registry, sanitizing
   render/plugins/        Markdown extensions (alerts, math, Mermaid, Graphviz, …)
-  ui/                    dialogs, find bar, TOC, diagram viewer, theme
+  print/                 imposition (pages → sheets, booklet), Markdown pagination, sheet DOM
+  ui/                    dialogs (incl. print dialog), find bar, TOC, diagram viewer, theme
 src-tauri/               native shell (Rust, Tauri 2)
   src/lib.rs             file reading/watching, state files, single instance, file-open events, open with
   tauri.conf.json        window, security policy (CSP), bundling, file associations

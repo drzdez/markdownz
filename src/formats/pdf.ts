@@ -3,7 +3,7 @@ import type { EventBus, PDFFindController, PDFLinkService, PDFViewer } from "pdf
 import * as backend from "../backend";
 import { toFileUrl } from "../paths";
 import { el } from "../ui/overlay";
-import type { DocumentView, FindProvider, FormatPlugin, OutlineItem, ViewContext, ViewHost } from "./types";
+import type { DocumentView, FindProvider, FormatPlugin, OutlineItem, PrintPages, ViewContext, ViewHost } from "./types";
 
 type Engine = typeof import("./pdfEngine");
 let engine: Promise<Engine> | undefined;
@@ -61,7 +61,17 @@ class PdfView implements DocumentView {
   private fit(): void {
     if (!this.viewer || !this.doc || !this.element.clientWidth) return;
     this.viewer.currentScaleValue = "auto";
-    this.baseScale = this.viewer.currentScale;
+    let scale = this.viewer.currentScale;
+    // "auto" fits the current page; documents mixing portrait and landscape pages must fit the widest one.
+    let widest = 0;
+    for (let i = 0; i < this.viewer.pagesCount; i++) {
+      const viewport = this.viewer.getPageView(i)?.viewport;
+      // viewport.scale includes the PDF-point-to-CSS-pixel factor (96/72); widest is in CSS px at scale 1.
+      if (viewport) widest = Math.max(widest, (viewport.width / viewport.scale) * (96 / 72));
+    }
+    const available = this.element.clientWidth - 40;
+    if (widest * scale > available) scale = available / widest;
+    this.baseScale = scale;
     this.viewer.currentScale = this.baseScale * this.zoom;
   }
 
@@ -138,22 +148,30 @@ class PdfView implements DocumentView {
     return (this.viewer?.currentPageNumber ?? 1) - 1;
   }
 
-  async print(): Promise<void> {
+  /** Renders every page to an image at print resolution (about 190 dpi). */
+  async printPages(_paper: unknown, onProgress?: (done: number, total: number) => void): Promise<PrintPages> {
     const doc = this.doc;
-    if (!doc) return;
-    document.getElementById("mdz-print")?.remove();
-    const root = el("div", { id: "mdz-print" });
+    if (!doc) throw new Error("document not loaded");
+    const urls: string[] = [];
+    const sizes: { width: number; height: number }[] = [];
+    const MM_PER_PT = 25.4 / 72;
     for (let n = 1; n <= doc.numPages; n++) {
       const page = await doc.getPage(n);
-      const viewport = page.getViewport({ scale: 2 });
+      const base = page.getViewport({ scale: 1 });
+      sizes.push({ width: base.width * MM_PER_PT, height: base.height * MM_PER_PT });
+      const viewport = page.getViewport({ scale: 2.6 });
       const canvas = el("canvas", { width: Math.ceil(viewport.width), height: Math.ceil(viewport.height) });
       await page.render({ canvas, viewport }).promise;
-      root.append(el("img", { src: canvas.toDataURL("image/png") }));
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+      urls.push(blob ? URL.createObjectURL(blob) : "");
+      onProgress?.(n, doc.numPages);
     }
-    document.body.append(root);
-    document.body.classList.add("mdz-printing-pdf");
-    window.addEventListener("afterprint", () => document.body.classList.remove("mdz-printing-pdf"), { once: true });
-    await backend.printPage();
+    return {
+      count: urls.length,
+      size: (index) => sizes[index],
+      render: (index) => el("img", { className: "mdz-pdf-page", src: urls[index], alt: `Page ${index + 1}` }),
+      dispose: () => urls.forEach((url) => URL.revokeObjectURL(url)),
+    };
   }
 
   dispose(): void {

@@ -136,7 +136,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl+wheel · Ctrl+ + / − / 0", "Zoom in / out / reset"],
   ["F5 · Ctrl+R", "Reload document"],
   ["Ctrl+Shift+O", "Open with another application (editor, …)"],
-  ["Ctrl+P", "Print / save as PDF"],
+  ["Ctrl+P", "Print: pages per sheet, booklet, two-sided"],
   ["Ctrl+,", "Settings and plugins"],
   ["Click a diagram", "Enlarge; wheel zooms, drag pans"],
   ["F1", "This help"],
