@@ -1,6 +1,6 @@
 [package]
 name = "markdownz"
-version = "0.3.0"
+version = "0.3.1"
 description = "Fast cross-platform Markdown viewer"
 authors = ["drzdez"]
 license = "MIT"

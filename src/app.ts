@@ -3,11 +3,13 @@ import { ErrorView } from "./formats/errorView";
 import { FORMATS, fileFilters, formatFor } from "./formats/registry";
 import type { DocumentView, FormatPlugin, ViewContext } from "./formats/types";
 import { HistoryTree, type HistoryState } from "./history";
+import { markMissing, relativeTime, touchRecent, type RecentDoc } from "./recent";
 import { classifyLink } from "./links";
-import { basename, extname, samePath } from "./paths";
+import { basename, dirname, extname, samePath } from "./paths";
 import { DEFAULT_CONFIG, DEFAULT_SESSION, type Config, type Session } from "./state";
 import { dropIndex, indicesToClose, moveItem, type CloseScope } from "./tabops";
-import { showContextMenu, type MenuItem } from "./ui/contextMenu";
+import { showContextMenu, visibleKeys, type MenuItem } from "./ui/contextMenu";
+import { folderIcon } from "./ui/icons";
 import { DEFAULT_PRINT_OPTIONS } from "./print/imposition";
 import { pickForward, showHelp, showHistoryTree, showSettings } from "./ui/dialogs";
 import { openPrintDialog } from "./ui/printDialog";
@@ -144,6 +146,8 @@ export class App {
     else {
       if (tab.zoom !== this.session.zoom) this.applyViewZoom(tab);
       this.afterShow(tab);
+      // Switching to an already rendered tab also counts as viewing the document.
+      if (tab.format) this.session.recent = touchRecent(this.session.recent, tab.path, tab.history.current.title, Date.now());
     }
     tab.view?.element.focus({ preventScroll: true });
     this.scheduleSave();
@@ -286,6 +290,62 @@ export class App {
     void this.activate(this.tabs[(i + dir + this.tabs.length) % this.tabs.length]);
   }
 
+  /**
+   * Checks whether the given recent documents still exist; missing ones are
+   * marked, never removed. Called only after a clicked document turned out to be
+   * missing, and only for the entries visible at that moment, so long histories
+   * never make the lists wait for the file system.
+   */
+  private async checkRecent(paths: string[]): Promise<void> {
+    const results = await Promise.all(paths.map((p) => backend.resolvePath(p).then(() => true, () => false)));
+    this.session.recent = markMissing(this.session.recent, new Map(paths.map((p, i) => [p, results[i]])));
+    if (this.welcome) this.renderRecentList();
+    this.scheduleSave();
+  }
+
+  /** `visible`: paths of the entries visible in the list that was clicked. */
+  private async openRecent(entry: RecentDoc, visible: string[]): Promise<void> {
+    const exists = await backend.resolvePath(entry.path).then(() => true, () => false);
+    if (exists) {
+      await this.openFiles([entry.path]); // showing it moves it to the top and clears "deleted"
+      return;
+    }
+    toast(`${basename(entry.path)} no longer exists.`, "warning");
+    this.session.recent = this.session.recent.map((r) => (samePath(r.path, entry.path) ? { ...r, missing: true } : r));
+    if (this.welcome) this.renderRecentList();
+    this.scheduleSave();
+    void this.checkRecent(visible.filter((p) => !samePath(p, entry.path)));
+  }
+
+  /** Shows the document in the file manager (selected), or opens its folder when the file is gone. */
+  private async showInFolder(path: string): Promise<void> {
+    const exists = await backend.resolvePath(path).then(() => true, () => false);
+    try {
+      if (exists) await backend.revealFile(path);
+      else await backend.openFolder(dirname(path));
+    } catch {
+      toast(`The folder of ${basename(path)} no longer exists.`, "warning");
+    }
+  }
+
+  /** The "+" button: recent documents first, then the file dialog. */
+  private showOpenMenu(): void {
+    const anchor = this.tabbar.querySelector<HTMLElement>(".open-button")?.getBoundingClientRect();
+    const recent: MenuItem[] = this.session.recent.map((r) => ({
+      label: r.title || basename(r.path),
+      detail: r.missing ? `deleted · ${r.path}` : `${relativeTime(r.opened, Date.now())} · ${r.path}`,
+      className: r.missing ? "deleted" : "",
+      key: r.path,
+      action: (visible) => void this.openRecent(r, visible),
+      side: { icon: folderIcon(), title: "Show in folder", action: () => void this.showInFolder(r.path) },
+    }));
+    showContextMenu(anchor ? anchor.left : 40, anchor ? anchor.bottom + 4 : 40, [
+      { label: "Open file…", hint: "Ctrl+O", action: () => void this.openDialog() },
+      null,
+      ...(recent.length ? recent : [{ label: "No recent documents", disabled: true, action: () => {} }]),
+    ]);
+  }
+
   private async openDialog(): Promise<void> {
     const paths = await backend.pickFiles(fileFilters(this.config));
     if (paths.length) await this.openFiles(paths);
@@ -317,6 +377,7 @@ export class App {
       tab.setView(new ErrorView(node.path, error, "Use “Open with…” (Ctrl+Shift+O) to open it in another application."), null);
     } else {
       node.title = title;
+      this.session.recent = touchRecent(this.session.recent, node.path, title, Date.now());
     }
     tab.renderedNode = node.id;
     tab.stale = false;
@@ -580,7 +641,7 @@ export class App {
       forward,
       button("⑂", "History tree — Ctrl+H", () => this.showHistory(), !tab),
       el("div", { className: "tabs" }, ...items),
-      button("+", "Open file — Ctrl+O", () => void this.openDialog()),
+      Object.assign(button("+", "Open — recent documents or a file (Ctrl+O)", () => this.showOpenMenu()), { className: "bar-button open-button" }),
       button("⎙", "Print — Ctrl+P", () => this.print(), !tab?.view?.printPages),
       openWith,
       button("☰", "Table of contents — Ctrl+B", () => this.toggleToc()),
@@ -603,18 +664,47 @@ export class App {
   private showWelcome(): void {
     void backend.setWindowTitle("Markdownz");
     this.toc.build([]);
-    if (this.welcome) return;
-    const open = el("button", { className: "primary", textContent: "Open document…" });
-    open.addEventListener("click", () => void this.openDialog());
-    this.welcome = el(
-      "section",
-      { className: "welcome" },
-      el("h1", { textContent: "Markdownz" }),
-      el("p", { textContent: "Open a Markdown or PDF document, or drop it here." }),
-      open,
-      el("p", { className: "mdz-hint", textContent: "Ctrl+O open · F1 shortcuts · Esc close" }),
-    );
-    this.docs.append(this.welcome);
+    // On a start without tabs nothing else has drawn the toolbar yet.
+    this.renderTabbar();
+    if (!this.welcome) {
+      const open = el("button", { className: "primary", textContent: "Open document…" });
+      open.addEventListener("click", () => void this.openDialog());
+      this.welcome = el(
+        "section",
+        { className: "welcome" },
+        el("h1", { textContent: "Markdownz" }),
+        el("p", { textContent: "Open a Markdown or PDF document, or drop it here." }),
+        open,
+        el("div", { className: "welcome-recent" }),
+        el("p", { className: "mdz-hint", textContent: "Ctrl+O open · F1 shortcuts · Esc close" }),
+      );
+      this.docs.append(this.welcome);
+    }
+    this.renderRecentList();
+  }
+
+  /** Recent documents on the landing page; deleted ones stay listed, struck through. */
+  private renderRecentList(): void {
+    const box = this.welcome?.querySelector(".welcome-recent");
+    if (!box) return;
+    const now = Date.now();
+    const items = this.session.recent.map((r) => {
+      const item = el(
+        "button",
+        { className: `recent-item${r.missing ? " deleted" : ""}`, title: r.missing ? `Deleted: ${r.path}` : r.path },
+        el("span", { className: "recent-title", textContent: r.title || basename(r.path) }),
+        el("span", { className: "recent-when", textContent: r.missing ? "deleted" : relativeTime(r.opened, now) }),
+        el("small", { className: "recent-path", textContent: r.path }),
+      );
+      item.addEventListener("click", () => void this.openRecent(r, visibleKeys(box as HTMLElement)));
+      const folder = el("button", { className: "recent-folder", title: "Show in folder" }, folderIcon());
+      folder.setAttribute("aria-label", "Show in folder");
+      folder.addEventListener("click", () => void this.showInFolder(r.path));
+      const row = el("div", { className: "recent-row" }, item, folder);
+      row.dataset.key = r.path;
+      return row;
+    });
+    box.replaceChildren(...(items.length ? [el("h2", { textContent: "Recent" }), ...items] : []));
   }
 
   private hideWelcome(): void {
@@ -705,9 +795,11 @@ export class App {
 
 let toastTimer: number | undefined;
 
-export function toast(message: string): void {
+/** Short message; "warning" shows it in the middle of the window in a colour that cannot be missed. */
+export function toast(message: string, kind: "info" | "warning" = "info"): void {
   const box = document.getElementById("toast")!;
   box.textContent = message;
+  box.classList.toggle("warning", kind === "warning");
   box.hidden = false;
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => (box.hidden = true), 2500);

@@ -24,6 +24,7 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 | Navigation | Relative links to other `.md` and `.pdf` files open in the same tab; <kbd>Ctrl</kbd>+click or middle click opens a new tab; `#anchors` work across files |
 | Viewing | Zoom (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd>), table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
 | Printing | Own print dialog with preview (<kbd>Ctrl</kbd>+<kbd>P</kbd> or ⎙): 1/2/4 pages per sheet, orientation by page or fixed, scale, alignment, margins, page frames, booklet (pages reordered for folding), two-sided via the printer or manually in two passes, page ranges, A4/Letter; paper is always light, Markdown is paginated between blocks |
+| Recent documents | Listed on the start page and in the **+** menu with the time they were last viewed; up to 100 entries, scrollable; when a clicked document no longer exists, Markdownz says so and checks only the entries visible in that list at the moment and shows missing ones as *deleted* (struck through); they stay in the list and open again if the file comes back. The folder icon next to each entry shows the file in Explorer / the default file manager |
 | Open with | Menu (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>, the ↗ button or right click on a tab): the system "choose an application" dialog, your own applications from `config.json`, show in folder, copy path |
 | Integration | `.md` and `.pdf` file associations, single instance (opening another file adds a tab), drag and drop, command line `markdownz file.md …` |
 
@@ -66,7 +67,7 @@ On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Press <kbd>F1</kbd> in t
 | Two-sided, manually | For printers without duplex: front sides first, then Markdownz tells you how to put the stack back and prints the back sides; *reverse order* helps with printers that stack differently |
 | Pages | `1-3, 5, 8-`; empty means all |
 | Reset | Back to the defaults: 1 page per sheet, orientation and scale automatic, two-sided on the long edge, no margins, no frames |
-| Placement | Scale: fit, % of the real page size, or a target page width or height in mm; horizontal and vertical alignment, margins of the physical sheet in mm, optional frames around each page and along the sheet margins |
+| Placement | Scale: fit, % of the real page size, or a target page width or height in mm; horizontal and vertical alignment, margins of the physical sheet in mm (optionally also at the fold, so an A4 sheet with two pages acts as two A5 sheets), optional frames around each page and along the sheet margins |
 
 Markdown documents are split into pages between paragraphs, list items, table rows and code lines, never right after a heading. PDF pages are rendered at print resolution. The job sent to the printer always uses portrait paper and landscape sheets are rotated onto it, so portrait and landscape sheets can be mixed on every platform. In the system dialog keep the scale at 100 % / default.
 

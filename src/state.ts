@@ -1,5 +1,6 @@
 import type { HistoryState } from "./history";
 import type { PrintOptions } from "./print/imposition";
+import type { RecentDoc } from "./recent";
 
 export type ThemeSetting = "auto" | "light" | "dark";
 
@@ -34,8 +35,10 @@ export interface Session {
   toc: boolean;
   /** Recently closed tabs for Ctrl+Shift+T, newest last. */
   closed: HistoryState[];
+  /** Recently opened documents, newest first. */
+  recent: RecentDoc[];
 }
 
 export const DEFAULT_CONFIG: Config = { theme: "auto", plugins: {}, formats: {}, openWith: [] };
 
-export const DEFAULT_SESSION: Session = { tabs: [], active: 0, zoom: 1, toc: false, closed: [] };
+export const DEFAULT_SESSION: Session = { tabs: [], active: 0, zoom: 1, toc: false, closed: [], recent: [] };

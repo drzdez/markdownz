@@ -3,6 +3,7 @@ import { HistoryTree } from "./history";
 import { classifyLink } from "./links";
 import { basename, dirname, extname, resolvePath, samePath, toFileUrl } from "./paths";
 import { dropIndex, indicesToClose, moveItem } from "./tabops";
+import { MAX_RECENT, markMissing, relativeTime, touchRecent } from "./recent";
 
 describe("paths", () => {
   it("resolves POSIX paths", () => {
@@ -144,5 +145,39 @@ describe("tab operations", () => {
     expect(dropIndex(5, [10, 30, 50])).toBe(0);
     expect(dropIndex(35, [10, 30, 50])).toBe(2);
     expect(dropIndex(99, [10, 30, 50])).toBe(3);
+  });
+});
+
+describe("recent documents", () => {
+  it("moves reopened documents to the front without duplicates", () => {
+    let list = touchRecent([], "/a.md", "A", 1);
+    list = touchRecent(list, "/b.pdf", undefined, 2);
+    list = touchRecent(list, "/a.md", "A2", 3);
+    expect(list.map((r) => [r.path, r.title, r.opened])).toEqual([["/a.md", "A2", 3], ["/b.pdf", undefined, 2]]);
+  });
+
+  it("keeps the list bounded", () => {
+    let list: ReturnType<typeof touchRecent> = [];
+    for (let i = 0; i < MAX_RECENT + 5; i++) list = touchRecent(list, `/d${i}.md`, undefined, i);
+    expect(list).toHaveLength(MAX_RECENT);
+    expect(list[0].path).toBe(`/d${MAX_RECENT + 4}.md`);
+  });
+
+  it("marks missing files but keeps them, touching only checked entries", () => {
+    const base = touchRecent(touchRecent(touchRecent([], "/a.md", "A", 1), "/b.md", "B", 2), "/c.md", "C", 3);
+    const list = markMissing(base, new Map([["/a.md", false], ["/b.md", true]]));
+    expect(list.map((r) => [r.path, r.missing])).toEqual([["/c.md", false], ["/b.md", false], ["/a.md", true]]);
+    expect(markMissing(list, new Map([["/c.md", false]])).map((r) => r.missing)).toEqual([true, false, true]);
+    expect(touchRecent(list, "/a.md", "A", 3)[0].missing).toBe(false);
+  });
+
+  it("formats relative times", () => {
+    const now = Date.UTC(2026, 9, 1, 12);
+    expect(relativeTime(now - 10_000, now)).toBe("just now");
+    expect(relativeTime(now - 5 * 60_000, now)).toBe("5 min ago");
+    expect(relativeTime(now - 3 * 3_600_000, now)).toBe("3 h ago");
+    expect(relativeTime(now - 30 * 3_600_000, now)).toBe("yesterday");
+    expect(relativeTime(now - 4 * 86_400_000, now)).toBe("4 days ago");
+    expect(relativeTime(Date.UTC(2026, 0, 2), now)).toBe("2026-01-02");
   });
 });

@@ -3,10 +3,10 @@ import hlLight from "highlight.js/styles/github.css?inline";
 import * as backend from "../backend";
 import type { PrintPages } from "../formats/types";
 import { el } from "../ui/overlay";
-import { PAPERS, SLOT_GAP, placePage, sheetGeometry, slotSize, type PrintOptions, type Side, type SheetGeometry } from "./imposition";
+import { PAPERS, placePage, sheetGeometry, slotGap, slotSize, type PrintOptions, type Side, type SheetGeometry } from "./imposition";
 
 /** Options that shape a single sheet. */
-export type SheetOptions = Pick<PrintOptions, "margin" | "scaleMode" | "scaleValue" | "alignH" | "alignV" | "border" | "marginFrame">;
+export type SheetOptions = Pick<PrintOptions, "margin" | "scaleMode" | "scaleValue" | "alignH" | "alignV" | "border" | "marginFrame" | "gutterMargin">;
 
 /**
  * Paper is always light, whatever the app theme: the light GitHub styles are
@@ -43,18 +43,21 @@ export function buildSheet(side: Side, geo: SheetGeometry, pages: PrintPages, op
     width: `${geo.width}mm`,
     height: `${geo.height}mm`,
     padding: `${options.margin}mm`,
-    gap: `${SLOT_GAP}mm`,
+    gap: `${slotGap(options.margin, options.gutterMargin)}mm`,
     gridTemplateColumns: `repeat(${geo.cols}, 1fr)`,
     gridTemplateRows: `repeat(${geo.rows}, 1fr)`,
   });
-  if (options.marginFrame) {
+  // One frame around the printable area, or one per page when the fold has margins too.
+  const perSlotFrames = options.marginFrame && options.gutterMargin && geo.cols * geo.rows > 1;
+  if (options.marginFrame && !perSlotFrames) {
     const frame = el("div", { className: "mdz-margin-frame" });
     frame.style.inset = `${options.margin}mm`;
     sheet.append(frame);
   }
-  const slotMm = slotSize(geo, options.margin);
+  const slotMm = slotSize(geo, options.margin, options.gutterMargin);
   for (const index of side.slots) {
     const slot = el("div", { className: "mdz-slot" });
+    if (perSlotFrames) slot.append(el("div", { className: "mdz-margin-frame mdz-slot-frame" }));
     if (index !== null) {
       const size = pages.size(index);
       const at = placePage(slotMm, size, options.scaleMode, options.scaleValue, options.alignH, options.alignV);

@@ -101,6 +101,11 @@ export async function openExternal(url: string): Promise<void> {
   await openUrl(url);
 }
 
+/** Opens an existing folder in the default file manager. */
+export async function openFolder(path: string): Promise<void> {
+  if (inTauri) await invoke("open_folder", { path });
+}
+
 /** Non-markdown local links are only revealed in the file manager, never executed. */
 export async function revealFile(path: string): Promise<void> {
   if (!inTauri) return;

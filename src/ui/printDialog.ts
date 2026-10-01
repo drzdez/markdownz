@@ -198,6 +198,13 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     void changed();
   });
 
+  const gutterMargin = el("input", { type: "checkbox", checked: options.gutterMargin });
+  gutterMargin.addEventListener("change", () => {
+    options.gutterMargin = gutterMargin.checked;
+    void changed();
+  });
+  const gutterLabel = el("label", { title: "Each page on the sheet gets margins on all sides, as if it were its own sheet (two A5 on A4)" }, gutterMargin, " Margins at the fold too");
+
   const marginFrame = el("input", { type: "checkbox", checked: options.marginFrame });
   marginFrame.addEventListener("change", () => {
     options.marginFrame = marginFrame.checked;
@@ -229,6 +236,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
       field("Horizontal", alignH),
       field("Vertical", alignV),
       field("Margins mm", margin),
+      gutterLabel,
       el("label", {}, border, " Frame around each page"),
       el("label", {}, marginFrame, " Frame along the sheet margins"),
     ),
@@ -261,6 +269,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     margin.value = String(options.margin);
     border.checked = options.border;
     marginFrame.checked = options.marginFrame;
+    gutterMargin.checked = options.gutterMargin;
     syncScale();
   }
 
@@ -289,6 +298,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
 
   function describe(sides: Side[]): void {
     reverseLabel.hidden = options.duplex !== "manual";
+    gutterLabel.hidden = options.layout === "1";
     orientation.disabled = options.layout === "booklet";
     const orientations = new Set(sides.map((s) => s.orientation));
     const edge = flipEdge(dominantOrientation(sides));

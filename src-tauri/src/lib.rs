@@ -95,6 +95,20 @@ async fn open_with(path: String, program: Option<String>, args: Option<Vec<Strin
     }
 }
 
+/// Opens a directory in the default file manager. Only existing directories are
+/// accepted, so this can never launch a program.
+#[tauri::command]
+fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    let dir = dunce::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
+    if !dir.is_dir() {
+        return Err(format!("{path}: not a folder"));
+    }
+    app.opener()
+        .open_path(dir.to_string_lossy(), None::<&str>)
+        .map_err(|e| e.to_string())
+}
+
 #[cfg(windows)]
 async fn choose_application(file: &Path) -> Result<(), String> {
     // The shell's "How do you want to open this file?" dialog.
@@ -281,6 +295,7 @@ pub fn run() {
             resolve_path,
             read_binary,
             open_with,
+            open_folder,
             watch_docs,
             load_state,
             save_state,

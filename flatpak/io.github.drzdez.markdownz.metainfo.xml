@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.3.1" date="2026-10-01">
+      <description>
+        <p>Recent documents on the start page and in the open menu, with a folder button and detection of deleted files. Print margins can also apply at the fold.</p>
+      </description>
+    </release>
     <release version="0.3.0" date="2026-10-01">
       <description>
         <p>New print dialog with preview: 1, 2 or 4 pages per sheet, booklets and two-sided printing, also manually on printers without duplex.</p>

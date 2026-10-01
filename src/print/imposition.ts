@@ -32,6 +32,11 @@ export interface PrintOptions {
   border: boolean;
   /** Draw a frame along the sheet margins (the printable area). */
   marginFrame: boolean;
+  /**
+   * Margins also along the fold between pages sharing a sheet: an A4 sheet with
+   * two pages behaves like two A5 sheets, each with its own margins.
+   */
+  gutterMargin: boolean;
 }
 
 /** Defaults (also what Reset restores): automatic where possible, two-sided, no margins, no frames. */
@@ -49,10 +54,13 @@ export const DEFAULT_PRINT_OPTIONS: PrintOptions = {
   margin: 0,
   border: false,
   marginFrame: false,
+  gutterMargin: true,
 };
 
-/** Gap between pages sharing a sheet, in mm. */
-export const SLOT_GAP = 4;
+/** Gap between pages sharing a sheet: twice the margin when the fold gets margins too. */
+export function slotGap(margin: number, gutterMargin: boolean): number {
+  return gutterMargin ? 2 * margin : 0;
+}
 
 export interface Placement {
   scale: number;
@@ -99,10 +107,11 @@ export function placePage(
 }
 
 /** Size of one slot (mm) on a sheet with the given margin. */
-export function slotSize(geo: SheetGeometry, margin: number): { width: number; height: number } {
+export function slotSize(geo: SheetGeometry, margin: number, gutterMargin: boolean): { width: number; height: number } {
+  const gap = slotGap(margin, gutterMargin);
   return {
-    width: (geo.width - 2 * margin - (geo.cols - 1) * SLOT_GAP) / geo.cols,
-    height: (geo.height - 2 * margin - (geo.rows - 1) * SLOT_GAP) / geo.rows,
+    width: (geo.width - 2 * margin - (geo.cols - 1) * gap) / geo.cols,
+    height: (geo.height - 2 * margin - (geo.rows - 1) * gap) / geo.rows,
   };
 }
 

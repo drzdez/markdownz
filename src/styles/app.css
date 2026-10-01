@@ -249,6 +249,11 @@ button {
   pointer-events: none;
 }
 
+.mdz-slot-frame {
+  inset: 0;
+  z-index: 1;
+}
+
 /* A real border (not a shadow) so it prints without "background graphics". */
 .mdz-page-border {
   position: absolute;
@@ -476,6 +481,116 @@ mark.mdz-find.current {
   font-weight: 600;
 }
 
+.welcome-recent {
+  width: min(640px, 92%);
+  max-height: 50vh;
+  overflow-y: auto;
+  margin-top: 16px;
+}
+
+.welcome-recent h2 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.recent-row {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.recent-folder,
+.mdz-menu-side {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.recent-folder:hover,
+.mdz-menu-side:hover,
+.mdz-menu-side:focus {
+  background: var(--hover);
+  color: var(--fg);
+  outline: none;
+}
+
+.mdz-menu-row {
+  display: flex;
+  gap: 2px;
+}
+
+.mdz-menu .mdz-menu-row > button:first-child {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
+.mdz-menu .mdz-menu-side {
+  width: 34px;
+  padding: 0;
+}
+
+.recent-item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-item:hover {
+  background: var(--hover);
+}
+
+.recent-title {
+  overflow: hidden;
+  color: var(--fg);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.recent-when,
+.recent-path {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.recent-path {
+  grid-column: 1 / -1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* Deleted documents stay in the lists, struck through. */
+.recent-item.deleted,
+.mdz-menu button.deleted {
+  opacity: 0.6;
+}
+
+.recent-item.deleted .recent-title,
+.mdz-menu button.deleted .mdz-menu-text > span {
+  text-decoration: line-through;
+}
+
 .primary {
   padding: 8px 16px;
   border: 1px solid var(--accent);
@@ -551,6 +666,23 @@ mark.mdz-find.current {
   box-shadow: var(--shadow);
   z-index: 40;
   pointer-events: none;
+}
+
+/* Hazard-tape warning: black and yellow stripes around a yellow panel. */
+#toast.warning {
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -50%);
+  padding: 14px 28px;
+  border: 12px solid transparent;
+  border-image: repeating-linear-gradient(-45deg, #111111 0 12px, #ffd400 12px 24px) 12;
+  border-radius: 0;
+  background: #ffd400;
+  color: #111111;
+  font-size: 18px;
+  font-weight: 700;
+  box-shadow: 0 12px 40px rgb(0 0 0 / 45%);
+  z-index: 60;
 }
 
 .mdz-backdrop {
@@ -764,6 +896,27 @@ kbd {
 .mdz-menu button:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+.mdz-menu {
+  max-width: min(560px, 92vw);
+  max-height: 70vh;
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+.mdz-menu-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.mdz-menu-text small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .mdz-menu hr {

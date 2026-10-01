@@ -141,7 +141,11 @@ describe("placement", () => {
   });
 
   it("computes slots from margins", () => {
-    expect(slotSize(sheetGeometry("1", "a4", "portrait"), 6)).toEqual({ width: 198, height: 285 });
-    expect(slotSize(sheetGeometry("2", "a4", "landscape"), 10)).toEqual({ width: (297 - 20 - 4) / 2, height: 190 });
+    expect(slotSize(sheetGeometry("1", "a4", "portrait"), 6, true)).toEqual({ width: 198, height: 285 });
+    // With margins at the fold every half is an A5 page with 10 mm on all sides.
+    expect(slotSize(sheetGeometry("2", "a4", "landscape"), 10, true)).toEqual({ width: 148.5 - 20, height: 190 });
+    // Without them the pages meet at the fold.
+    expect(slotSize(sheetGeometry("2", "a4", "landscape"), 10, false)).toEqual({ width: (297 - 20) / 2, height: 190 });
+    expect(slotSize(sheetGeometry("4", "a4", "portrait"), 5, true)).toEqual({ width: 105 - 10, height: 148.5 - 10 });
   });
 });

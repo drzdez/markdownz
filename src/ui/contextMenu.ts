@@ -3,8 +3,27 @@ import { el, pushLayer, removeLayer, type Layer } from "./overlay";
 export interface MenuItem {
   label: string;
   hint?: string;
+  /** Second, muted line (e.g. a path). */
+  detail?: string;
   disabled?: boolean;
-  action: () => void;
+  className?: string;
+  /** Identifies the item for the visible keys passed to actions. */
+  key?: string;
+  /** Receives the keys of the items that were visible in the (scrollable) menu when clicked. */
+  action: (visibleKeys: string[]) => void;
+  /** Small icon button next to the item (e.g. "show in folder"). */
+  side?: { icon: SVGElement; title: string; action: () => void };
+}
+
+/** Keys (data-key) of the children of `container` that are at least partly visible in it. */
+export function visibleKeys(container: HTMLElement): string[] {
+  const box = container.getBoundingClientRect();
+  return [...container.querySelectorAll<HTMLElement>("[data-key]")]
+    .filter((item) => {
+      const r = item.getBoundingClientRect();
+      return r.bottom > box.top && r.top < box.bottom && r.height > 0;
+    })
+    .map((item) => item.dataset.key!);
 }
 
 /** Small popup menu at (x, y); `null` entries render as separators. */
@@ -37,14 +56,32 @@ export function showContextMenu(x: number, y: number, items: (MenuItem | null)[]
       menu.append(el("hr"));
       continue;
     }
-    const button = el("button", { disabled: !!item.disabled }, el("span", { textContent: item.label }));
+    const text = el("span", { className: "mdz-menu-text" }, el("span", { textContent: item.label }));
+    if (item.detail) text.append(el("small", { textContent: item.detail }));
+    const button = el("button", { disabled: !!item.disabled, className: item.className ?? "" }, text);
     if (item.hint) button.append(el("kbd", { textContent: item.hint }));
+    if (item.key) button.dataset.key = item.key;
     button.setAttribute("role", "menuitem");
     button.addEventListener("click", () => {
+      const visible = visibleKeys(menu);
       layer.close();
-      item.action();
+      item.action(visible);
     });
-    menu.append(button);
+    if (!item.side) {
+      menu.append(button);
+      continue;
+    }
+    const side = el("button", { className: "mdz-menu-side", title: item.side.title }, item.side.icon);
+    side.setAttribute("aria-label", item.side.title);
+    const sideAction = item.side.action;
+    side.addEventListener("click", () => {
+      layer.close();
+      sideAction();
+    });
+    const row = el("div", { className: "mdz-menu-row" }, button, side);
+    if (item.key) row.dataset.key = item.key;
+    button.removeAttribute("data-key");
+    menu.append(row);
   }
 
   document.body.append(menu);
