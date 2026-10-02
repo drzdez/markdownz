@@ -16,3 +16,6 @@ flatpak/repo/
 
 # pdf.js data copied by scripts/copy-pdfjs.mjs
 public/pdfjs/
+
+# Local user feedback (screenshots, notes)
+feedback/

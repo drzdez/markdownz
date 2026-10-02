@@ -8,6 +8,8 @@
 | `cargo-sources.json`, `node-sources.json` | Offline dependency lists (Flatpak builds have no network) |
 | `update-sources.sh` | Regenerates the two lists after dependency changes |
 
+CI runs `node scripts/check-flatpak-sources.mjs`, which fails when a locked npm package or crate is missing from the lists, so a forgotten regeneration is caught before a release.
+
 The app gets read-only access to the home directory (`--filesystem=home:ro`).
 The document portal alone would expose just the opened file, which would break relative links, images next to the document and live reload.
 

@@ -30,6 +30,8 @@ jobs:
           workspaces: src-tauri -> target
 
       - run: npm ci
+      - name: Flatpak offline sources up to date
+        run: node scripts/check-flatpak-sources.mjs
       - run: npm test
       - run: npm run build
 
