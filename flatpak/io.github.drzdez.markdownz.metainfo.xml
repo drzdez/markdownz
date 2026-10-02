@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.3.3" date="2026-10-02">
+      <description>
+        <p>Windows: opening documents no longer triggers a Windows Installer repair for other users of a per-machine installation. The Flatpak build is back.</p>
+      </description>
+    </release>
     <release version="0.3.2" date="2026-10-01">
       <description>
         <p>Checks for a new version once a day and offers to install it. The installer publisher is now drzdez.</p>

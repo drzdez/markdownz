@@ -97,7 +97,12 @@
       }
     },
     "publisher": "drzdez",
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "windows": {
+      "wix": {
+        "template": "windows/main.wxs"
+      }
+    }
   },
   "plugins": {
     "updater": {
