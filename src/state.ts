@@ -23,6 +23,12 @@ export interface Config {
   /** Document format id -> enabled. */
   formats: Record<string, boolean>;
   openWith: OpenWithApp[];
+  /** Tables, code, diagrams and images wider than the text column may use the width of the window (default on). */
+  wideObjects?: boolean;
+  /** Width ruler above Markdown documents (default on). */
+  ruler?: boolean;
+  /** Text column and widest object in CSS px at 100 % zoom (set with the ruler). */
+  widths?: { text: number; objects: number };
   /** Last used print settings. */
   print?: PrintOptions;
   /** Check for a new version once a day at start. */
@@ -43,8 +49,16 @@ export interface Session {
   closed: HistoryState[];
   /** Recently opened documents, newest first. */
   recent: RecentDoc[];
+  /** Indexes of the tabs shown side by side, left to right (one entry = a single document). */
+  panes: number[];
+  /** Relative widths of the panes. */
+  paneSizes: number[];
+  /** Indexes of the tabs shown as printed pages instead of continuous text. */
+  pageTabs: number[];
+  /** Sheets per row in page view; 0 = as many as fit. */
+  pageColumns: number;
 }
 
 export const DEFAULT_CONFIG: Config = { theme: "auto", plugins: {}, formats: {}, openWith: [], checkUpdates: true };
 
-export const DEFAULT_SESSION: Session = { tabs: [], active: 0, zoom: 1, toc: false, closed: [], recent: [] };
+export const DEFAULT_SESSION: Session = { tabs: [], active: 0, zoom: 1, toc: false, closed: [], recent: [], panes: [], paneSizes: [], pageTabs: [], pageColumns: 0 };

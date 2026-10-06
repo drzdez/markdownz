@@ -5,6 +5,8 @@ import { Renderer, slugify } from "../render/renderer";
 import { openDiagram } from "../ui/diagramViewer";
 import { DomFindProvider } from "../ui/domFind";
 import { el } from "../ui/overlay";
+import { Ruler } from "../ui/ruler";
+import { DEFAULT_TEXT_WIDTH, fitWideObjects, shrinkWideObjects, type Widths } from "./wideObjects";
 import type { DocumentView, FormatPlugin, OutlineItem, PrintPages, ViewContext, ViewHost } from "./types";
 
 /** Printed page margin in mm. */
@@ -13,6 +15,17 @@ const PX_PER_MM = 96 / 25.4;
 
 let renderer: Renderer | null = null;
 let pluginSettings: Record<string, boolean> = {};
+
+/** Layout settings shared by all Markdown views (from the config, changed live by the ruler). */
+const layout = { wideObjects: true, ruler: true, widths: { text: DEFAULT_TEXT_WIDTH, objects: DEFAULT_TEXT_WIDTH } as Widths };
+const views = new Set<MarkdownView>();
+
+/** The ruler changed the widths: apply them to every view; tell the app (which saves them) on release. */
+function changeWidths(widths: Widths, done: boolean): void {
+  layout.widths = widths;
+  for (const view of views) view.layout();
+  if (done) window.dispatchEvent(new CustomEvent<Widths>("mdz-widths", { detail: widths }));
+}
 
 function getRenderer(): Renderer {
   return (renderer ??= new Renderer(pluginSettings));
@@ -24,6 +37,20 @@ class MarkdownView implements DocumentView {
   private article: HTMLElement | null = null;
   private path = "";
   private source = "";
+  private zoom = 1;
+  private fitFrame = 0;
+  private resizeObserver: ResizeObserver;
+  private ruler = new Ruler(this.element, {
+    widths: () => layout.widths,
+    zoom: () => this.zoom,
+    textBox: () => {
+      if (!this.article) return null;
+      const box = this.article.getBoundingClientRect();
+      const padding = parseFloat(getComputedStyle(this.article).paddingLeft) * this.zoom;
+      return { left: box.left + padding, width: box.width - 2 * padding };
+    },
+    change: changeWidths,
+  });
 
   constructor(host: ViewHost) {
     this.element.addEventListener("scroll", () => host.onScroll());
@@ -46,6 +73,23 @@ class MarkdownView implements DocumentView {
         host.followLink(href, true);
       }
     });
+    this.element.append(this.ruler.element);
+    // The view (window, panes, table of contents) or the article (images loading) changed size.
+    this.resizeObserver = new ResizeObserver(() => {
+      cancelAnimationFrame(this.fitFrame);
+      this.fitFrame = requestAnimationFrame(() => this.layout());
+    });
+    this.resizeObserver.observe(this.element);
+    views.add(this);
+  }
+
+  /** Applies the text width, lays out wide objects and moves the ruler stops. */
+  layout(): void {
+    this.element.style.setProperty("--text-width", `${layout.widths.text}px`);
+    this.ruler.element.hidden = !layout.ruler;
+    if (!this.article) return;
+    fitWideObjects(this.article, this.element, this.zoom, layout.wideObjects ? layout.widths : null);
+    if (layout.ruler) this.ruler.update();
   }
 
   async load(path: string, ctx: ViewContext): Promise<{ title?: string }> {
@@ -58,15 +102,20 @@ class MarkdownView implements DocumentView {
 
   async refresh(ctx: ViewContext): Promise<void> {
     const article = await getRenderer().render(this.source, { docPath: this.path, theme: ctx.theme });
-    if (this.article) this.article.replaceWith(article);
-    else this.element.append(article);
+    if (this.article) {
+      this.resizeObserver.unobserve(this.article);
+      this.article.replaceWith(article);
+    } else this.element.append(article);
     this.article = article;
+    this.resizeObserver.observe(article);
     this.setZoom(ctx.zoom);
   }
 
   setZoom(zoom: number): void {
     const ratio = this.element.scrollHeight > 0 ? this.element.scrollTop / this.element.scrollHeight : 0;
+    this.zoom = zoom;
     this.element.style.setProperty("--zoom", String(zoom));
+    this.layout();
     this.element.scrollTop = ratio * this.element.scrollHeight;
   }
 
@@ -104,6 +153,7 @@ class MarkdownView implements DocumentView {
     document.body.append(measure);
     await waitForImages(measure);
     await document.fonts.ready;
+    shrinkWideObjects(article);
     const { candidates, avoid, total } = measureBreaks(article);
     const ranges = paginate(candidates, total, contentHeight * PX_PER_MM, avoid);
     measure.remove();
@@ -127,6 +177,9 @@ class MarkdownView implements DocumentView {
 
   dispose(): void {
     this.find.clear();
+    this.resizeObserver.disconnect();
+    views.delete(this);
+    cancelAnimationFrame(this.fitFrame);
     this.element.remove();
   }
 }
@@ -139,6 +192,10 @@ export const markdownFormat: FormatPlugin = {
   defaultEnabled: true,
   configure(config) {
     pluginSettings = config.plugins;
+    layout.wideObjects = config.wideObjects !== false;
+    layout.ruler = config.ruler !== false;
+    layout.widths = { text: config.widths?.text ?? DEFAULT_TEXT_WIDTH, objects: config.widths?.objects ?? config.widths?.text ?? DEFAULT_TEXT_WIDTH };
+    for (const view of views) view.layout();
     renderer?.configure(config.plugins);
   },
   createView: (host) => new MarkdownView(host),

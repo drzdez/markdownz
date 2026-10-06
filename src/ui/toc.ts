@@ -13,11 +13,12 @@ export class Toc {
     this.nav.hidden = !on;
   }
 
-  build(items: OutlineItem[]): void {
+  /** `empty`: hint shown instead of an empty list. */
+  build(items: OutlineItem[], empty = "No outline"): void {
     this.nav.replaceChildren();
     this.entries = [];
     if (!items.length) {
-      this.nav.append(Object.assign(document.createElement("p"), { className: "mdz-hint", textContent: "No outline" }));
+      this.nav.append(Object.assign(document.createElement("p"), { className: "mdz-hint", textContent: empty }));
       return;
     }
     const minLevel = Math.min(...items.map((i) => i.level));

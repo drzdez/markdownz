@@ -18,7 +18,8 @@ export class Finder {
     },
   };
 
-  constructor(private getProvider: () => FindProvider | null, private onClose: () => void) {
+  /** `getProvider` may return a message explaining why the active document cannot be searched. */
+  constructor(private getProvider: () => FindProvider | string | null, private onClose: () => void) {
     this.input.addEventListener("input", () => this.run(1, false));
     document.getElementById("find-next")!.addEventListener("click", () => this.step(1));
     document.getElementById("find-prev")!.addEventListener("click", () => this.step(-1));
@@ -61,14 +62,15 @@ export class Finder {
   }
 
   private run(direction: 1 | -1, again: boolean): void {
-    const provider = this.getProvider();
+    const found = this.getProvider();
+    const provider = typeof found === "string" ? null : found;
     if (provider !== this.provider) {
       this.provider?.clear();
       this.provider = provider;
       again = false;
     }
     if (!provider) {
-      this.count.textContent = "";
+      this.count.textContent = typeof found === "string" ? found : "";
       return;
     }
     provider.onResult = ({ index, count }) => {

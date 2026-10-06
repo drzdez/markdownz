@@ -78,7 +78,7 @@ export function showSettings(config: Config, onChange: (config: Config) => void,
     ["light", "Light"],
     ["dark", "Dark"],
   ];
-  const themeGroup = el("fieldset", {}, el("legend", { textContent: "Theme" }));
+  const themeGroup = el("fieldset", {}, el("legend", { textContent: "Appearance" }));
   for (const [value, label] of themes) {
     const input = el("input", { type: "radio", name: "theme", value, checked: config.theme === value });
     input.dataset.nav = "";
@@ -88,6 +88,27 @@ export function showSettings(config: Config, onChange: (config: Config) => void,
     });
     themeGroup.append(el("label", {}, input, ` ${label}`));
   }
+  const wide = el("input", { type: "checkbox", checked: config.wideObjects !== false });
+  wide.dataset.nav = "";
+  wide.addEventListener("change", () => {
+    config = { ...config, wideObjects: wide.checked };
+    onChange(config);
+  });
+  const ruler = el("input", { type: "checkbox", checked: config.ruler !== false });
+  ruler.dataset.nav = "";
+  ruler.addEventListener("change", () => {
+    config = { ...config, ruler: ruler.checked };
+    onChange(config);
+  });
+  themeGroup.append(
+    el(
+      "label",
+      { title: "Text stays in a readable column; wider objects get just the room they need so they do not scroll, up to the object width on the ruler" },
+      wide,
+      " Wide tables, code, diagrams and images may extend beyond the text",
+    ),
+    el("label", { title: "Drag the stops to set the text width and the widest object; double-click resets" }, ruler, " Width ruler above Markdown documents"),
+  );
 
   const option = (name: string, description: string, checked: boolean, change: (on: boolean) => void) => {
     const input = el("input", { type: "checkbox", checked });
@@ -155,6 +176,9 @@ const SHORTCUTS: [string, string][] = [
   ["F5 · Ctrl+R", "Reload document"],
   ["Ctrl+Shift+O", "Open with another application (editor, …)"],
   ["Ctrl+P", "Print: pages per sheet, booklet, two-sided"],
+  ["Ctrl+\\ · right click on tab", "Documents side by side (▥ menu: 2, 3, 4)"],
+  ["Ctrl+Alt+← / →", "Previous / next document side by side"],
+  ["Ctrl+Shift+P", "Pages as printed / continuous (sheets per row in the ▥ menu)"],
   ["Ctrl+,", "Settings and plugins"],
   ["Click a diagram", "Enlarge; wheel zooms, drag pans"],
   ["F1", "This help"],

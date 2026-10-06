@@ -192,14 +192,158 @@ button {
 
 #docs {
   position: relative;
+  display: flex;
   flex: 1;
   min-width: 0;
 }
 
-.doc-frame,
+/* Each shown tab is a pane; several panes share the width (flex-grow = relative width). */
+.doc-frame {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .doc-view {
   position: absolute;
   inset: 0;
+}
+
+.welcome {
+  flex: 1;
+}
+
+.pane-head {
+  display: none;
+}
+
+.doc-frame.split > .pane-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.doc-frame.split.focused > .pane-head {
+  color: var(--fg);
+  box-shadow: inset 0 2px var(--accent);
+}
+
+.pane-title {
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pane-close {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pane-close:hover {
+  background: var(--hover);
+}
+
+.doc-frame.split > .doc-view {
+  top: 27px;
+}
+
+.pane-divider {
+  flex: none;
+  width: 5px;
+  background: var(--border);
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.pane-divider:hover,
+.pane-divider.dragging {
+  background: var(--accent);
+}
+
+/* Tabs shown side by side are underlined in the tab bar. */
+.tab.shown {
+  box-shadow: inset 0 -2px var(--border);
+}
+
+.tab.shown.active {
+  box-shadow: inset 0 -2px var(--accent);
+}
+
+.bar-button.on {
+  color: var(--accent);
+}
+
+/* Page view: the document as printed, sheets side by side. */
+.page-view {
+  background: var(--chrome);
+}
+
+.page-grid {
+  display: grid;
+  justify-content: center;
+  align-items: start;
+  gap: 16px;
+  padding: 24px;
+}
+
+.page-grid.auto {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.page-box {
+  margin: 0;
+}
+
+.page-sheet {
+  overflow: hidden;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 35%);
+}
+
+.page-box figcaption {
+  height: 22px;
+  padding-top: 4px;
+  box-sizing: border-box;
+  color: var(--muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.page-status {
+  margin: 24px;
+  text-align: center;
+}
+
+/* Check marks in menus with choices (view menu). */
+.mdz-menu button.checked .mdz-menu-text > span::before,
+.mdz-menu button.unchecked .mdz-menu-text > span::before {
+  display: inline-block;
+  width: 1.4em;
+  content: "";
+}
+
+.mdz-menu button.checked .mdz-menu-text > span::before {
+  content: "✓";
+  color: var(--accent);
+}
+
+.mdz-menu button.indent .mdz-menu-text {
+  padding-left: 1.4em;
 }
 
 .doc-view {
@@ -418,7 +562,9 @@ button {
 
 .doc-view > .markdown-body {
   zoom: var(--zoom, 1);
-  max-width: 980px;
+  /* --text-width is the width of the text itself; the column adds its padding. */
+  box-sizing: border-box;
+  max-width: calc(var(--text-width, 884px) + 96px);
   margin: 0 auto;
   padding: 32px 48px 64px;
   background: transparent;
@@ -426,6 +572,91 @@ button {
 
 .markdown-body img {
   background: transparent;
+}
+
+/* Objects wider than the text column, sized and centred by fitWideObjects(). */
+.doc-view > .markdown-body .mdz-wide {
+  box-sizing: border-box;
+  max-width: none;
+}
+
+img.mdz-wide {
+  height: auto;
+}
+
+/* Width ruler: upper row = text column (accent), lower row = wide objects (muted),
+   so the stops can be grabbed even when both widths are equal. */
+.mdz-ruler {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  height: 16px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  user-select: none;
+}
+
+.mdz-ruler-text,
+.mdz-ruler-objects {
+  position: absolute;
+  top: 2px;
+  height: 4px;
+  border-radius: 2px;
+}
+
+.mdz-ruler-objects {
+  top: 10px;
+  background: var(--border);
+}
+
+.mdz-ruler-text {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.mdz-ruler-stop {
+  position: absolute;
+  top: 0;
+  width: 10px;
+  height: 8px;
+  margin-left: -5px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.mdz-ruler-stop::after {
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+  border-radius: 2px;
+  content: "";
+  background: var(--muted);
+}
+
+.mdz-ruler-stop.objects {
+  top: 8px;
+}
+
+.mdz-ruler-stop.text::after {
+  background: var(--accent);
+}
+
+.mdz-ruler-stop:hover::after {
+  left: 2px;
+  width: 6px;
+}
+
+.mdz-ruler-label {
+  position: absolute;
+  top: 18px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--fg);
+  color: var(--bg);
+  font-size: 12px;
+  white-space: nowrap;
+  pointer-events: none;
 }
 
 .mdz-diagram {
