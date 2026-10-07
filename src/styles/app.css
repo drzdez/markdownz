@@ -415,6 +415,36 @@ button {
   overflow: hidden;
 }
 
+/* Orientation markers from the file are invisible anchors. */
+.mdz-mark {
+  display: none;
+}
+
+/* What decides the page orientation: above the pages and in the print dialog. */
+.page-info {
+  margin: 16px 24px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.mdz-print-notes {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+/* Note between the parts of a table split by columns for paper. */
+.mdz-paper .markdown-body .mdz-table-continued {
+  margin: 0 0 4px;
+  color: #59636e;
+  font-size: 0.8em;
+  font-style: italic;
+}
+
 .mdz-paper .markdown-body {
   max-width: none;
   padding: 0;

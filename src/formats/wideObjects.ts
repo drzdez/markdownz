@@ -4,6 +4,10 @@
 // and images that need more room than the column get just as much as they need
 // so they do not have to scroll, up to the object width the user set with the
 // ruler, and are centred in the view. Objects that fit are left alone.
+// On paper (print, page view) the same objects get landscape pages or shrink.
+
+import { groupColumns, type WideBlock } from "../print/paginate";
+import type { WideTables } from "../print/imposition";
 
 /** Widths in CSS px at 100 % zoom (they scale with the zoom like the text). */
 export interface Widths {
@@ -80,20 +84,7 @@ export function fitWideObjects(article: HTMLElement, view: HTMLElement, zoom: nu
   // Lengths inside the article are scaled by its zoom; measure in its units.
   const room = Math.max(0, (view.clientWidth - 2 * VIEW_GAP) / zoom);
   const limit = Math.max(widths.objects, widths.text);
-
-  const measure = (width: string) => {
-    for (const { element, kind } of objects) {
-      // Widths include padding (code blocks), like the final width set below.
-      element.style.boxSizing = "border-box";
-      if (kind === "rigid" || width === "100%") element.style.width = width;
-    }
-    return objects.map(({ element }) => element.getBoundingClientRect().width / zoom);
-  };
-  const available = measure("100%");
-  objects.forEach(({ element }) => (element.style.maxWidth = "none"));
-  const least = measure("min-content");
-  const most = measure("max-content");
-  objects.forEach((o) => reset(o.element));
+  const { available, least, most } = measureObjects(objects, zoom);
 
   const targets = objects.map(({ element, kind }, i) => {
     const width =
@@ -121,17 +112,139 @@ export function fitWideObjects(article: HTMLElement, view: HTMLElement, zoom: nu
 }
 
 /**
- * Printed pages cannot scroll: tables, code blocks and math wider than the
- * text width are scaled down to fit instead of being cut off at the right edge.
+ * Width each object has in the text column (`available`), needs at least to
+ * avoid scrolling (`least`, tables wrapped as much as possible) and would take
+ * without wrapping (`most`), in the article's units. Three layouts in total.
  */
-export function shrinkWideObjects(article: HTMLElement): void {
-  const objects = wideCandidates(article).filter((o) => o.kind === "rigid");
-  const available = objects.map((o) => o.element.clientWidth);
-  const needed = objects.map((o) => o.element.scrollWidth);
-  objects.forEach(({ element }, i) => {
-    if (needed[i] <= available[i] + 1) return;
-    // Keep the measured layout (a table must not grow to its unwrapped width) and scale it.
-    // (+2 px for collapsed table borders.)
-    Object.assign(element.style, { boxSizing: "border-box", width: `${needed[i] + 2}px`, maxWidth: "none", overflow: "visible", zoom: String(available[i] / (needed[i] + 2)) });
+function measureObjects(objects: WideObject[], zoom: number): { available: number[]; least: number[]; most: number[] } {
+  const measure = (width: string) => {
+    for (const { element, kind } of objects) {
+      // Widths include padding (code blocks), like the final widths set afterwards.
+      element.style.boxSizing = "border-box";
+      if (kind === "rigid" || width === "100%") element.style.width = width;
+    }
+    return objects.map(({ element }) => element.getBoundingClientRect().width / zoom);
+  };
+  const available = measure("100%");
+  objects.forEach(({ element }) => (element.style.maxWidth = "none"));
+  const least = measure("min-content");
+  const most = measure("max-content");
+  objects.forEach((o) => reset(o.element));
+  return { available, least, most };
+}
+
+export interface PaperFit {
+  /** How to handle an object: the print settings' Wide tables, or an orientation exception of its block. */
+  modeFor(element: HTMLElement): WideTables;
+  /** Room for wide objects on a landscape page, px. */
+  landscapeRoom: number;
+  /** Smallest text size in px a wide object may be scaled to. */
+  minFontPx: number;
+}
+
+/** An object laid out wider than the text, for a landscape page. */
+export interface PaperWide extends WideBlock {
+  element: HTMLElement;
+}
+
+// Borders of collapsed tables add a little to the measured width.
+const BORDER_SLACK = 2;
+
+/**
+ * Lays out tables, code and math wider than the text for paper, which cannot
+ * scroll. In "landscape" mode they take up to the landscape room (extending to
+ * the right of the text, which stays left aligned), in "shrink" mode the text
+ * width. They are scaled down when still too wide, but never below the
+ * smallest text size; table columns that still do not fit continue below in
+ * further parts of the table (with the first column repeated), long code lines
+ * wrap. Returns the objects that are wider than the text, so the pagination
+ * can give them landscape pages.
+ */
+export function fitObjectsForPaper(article: HTMLElement, fit: PaperFit): { wide: PaperWide[]; overflowing: Set<HTMLElement> } {
+  let objects = wideCandidates(article).filter((o) => o.kind === "rigid");
+  let sizes = measureObjects(objects, 1);
+  const roomFor = (element: HTMLElement, available: number) => (fit.modeFor(element) === "landscape" ? fit.landscapeRoom : available);
+  // Split tables that cannot fit even at the smallest text size, then measure again.
+  const split = objects.filter(({ element }, i) => {
+    if (sizes.least[i] <= sizes.available[i] + 1 || element.tagName !== "TABLE" || fit.modeFor(element) === "none") return false;
+    const scale = minScale(element, fit.minFontPx);
+    const room = roomFor(element, sizes.available[i]);
+    return sizes.least[i] * scale > room + 1 && splitTable(element as HTMLTableElement, room / scale);
   });
+  if (split.length) {
+    objects = wideCandidates(article).filter((o) => o.kind === "rigid");
+    sizes = measureObjects(objects, 1);
+  }
+  const { available, least, most } = sizes;
+  const wide: HTMLElement[] = [];
+  /** Objects wider than the text, whatever is done with them. */
+  const overflowing = new Set<HTMLElement>();
+  objects.forEach(({ element }, i) => {
+    if (least[i] <= available[i] + 1) return; // fits the text column
+    overflowing.add(element);
+    const mode = fit.modeFor(element);
+    if (mode === "none") return; // as is
+    const room = roomFor(element, available[i]);
+    const style = element.style;
+    Object.assign(style, { boxSizing: "border-box", maxWidth: "none", overflow: "visible" });
+    if (least[i] <= room) {
+      // Enough room once wider than the text: unwrap as far as the room allows.
+      style.width = `${Math.min(most[i], room) + BORDER_SLACK}px`;
+    } else {
+      const scale = Math.max(room / (least[i] + BORDER_SLACK), minScale(element, fit.minFontPx));
+      if (element.tagName === "PRE" && (least[i] + BORDER_SLACK) * scale > room + 1) {
+        // Code cannot shrink further: wrap the long lines.
+        Object.assign(style, { width: `${room / scale}px`, whiteSpace: "pre-wrap", overflowWrap: "anywhere" });
+      } else style.width = `${least[i] + BORDER_SLACK}px`;
+      style.zoom = String(scale);
+    }
+    if (mode === "landscape") wide.push(element);
+  });
+  const top = article.getBoundingClientRect().top;
+  return {
+    wide: wide
+      .map((element) => ({ element, rect: element.getBoundingClientRect() }))
+      .filter(({ rect }) => rect.width > 0)
+      .map(({ element, rect }) => ({ element, top: Math.floor(rect.top - top), bottom: Math.ceil(rect.bottom - top) })),
+    overflowing,
+  };
+}
+
+/** Smallest scale that keeps the object's text at `minFontPx`. */
+function minScale(element: HTMLElement, minFontPx: number): number {
+  const sample = element.querySelector("td, th, code") ?? element;
+  const size = parseFloat(getComputedStyle(sample).fontSize) || 16;
+  return Math.min(1, minFontPx / size);
+}
+
+/**
+ * Replaces a table by several tables with groups of its columns that fit
+ * `limit` px each, the first column repeated. Only simple tables (no merged
+ * cells) are split; returns whether it did.
+ */
+function splitTable(table: HTMLTableElement, limit: number): boolean {
+  if (table.querySelector("[colspan], [rowspan]")) return false;
+  const first = table.rows[0];
+  if (!first || first.cells.length < 3) return false;
+  table.style.width = "min-content";
+  table.style.maxWidth = "none";
+  const widths = [...first.cells].map((cell) => cell.getBoundingClientRect().width);
+  table.style.width = "";
+  table.style.maxWidth = "";
+  const groups = groupColumns(widths, limit);
+  if (groups.length < 2) return false;
+  const parts = groups.map((group, n) => {
+    const part = table.cloneNode(true) as HTMLTableElement;
+    const keep = new Set([0, ...group]);
+    for (const row of [...part.rows]) [...row.cells].forEach((cell, i) => keep.has(i) || cell.remove());
+    if (n === 0) return [part];
+    const note = document.createElement("p");
+    note.className = "mdz-table-continued";
+    // Parts belong to the same block of content as the table (for orientation exceptions).
+    if (table.dataset.mdzBlock) note.dataset.mdzBlock = table.dataset.mdzBlock;
+    note.textContent = `Table continued (columns ${group[0] + 1}–${group[group.length - 1] + 1})`;
+    return [note, part];
+  });
+  table.replaceWith(...parts.flat());
+  return true;
 }

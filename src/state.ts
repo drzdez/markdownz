@@ -1,5 +1,6 @@
 import type { HistoryState } from "./history";
 import type { PrintOptions } from "./print/imposition";
+import type { DocExceptions } from "./print/orientation";
 import type { RecentDoc } from "./recent";
 
 export type ThemeSetting = "auto" | "light" | "dark";
@@ -27,6 +28,8 @@ export interface Config {
   wideObjects?: boolean;
   /** Width ruler above Markdown documents (default on). */
   ruler?: boolean;
+  /** Your page orientation exceptions per document (full path), see print/orientation.ts. */
+  pageExceptions?: Record<string, DocExceptions>;
   /** Text column and widest object in CSS px at 100 % zoom (set with the ruler). */
   widths?: { text: number; objects: number };
   /** Last used print settings. */

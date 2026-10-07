@@ -2,8 +2,9 @@
 // print settings (paper, pages per sheet, booklet, margins, scale, frames),
 // with one or more sheets side by side.
 
-import type { DocumentView, PrintPages } from "../formats/types";
-import { PAPERS, impose, orientSides, sheetGeometry, type PrintOptions, type SheetGeometry, type Side } from "../print/imposition";
+import type { DocumentView, OrientationTarget, PrintPages } from "../formats/types";
+import type { LocalException } from "../print/orientation";
+import { impose, orientSides, pageSetup, sheetGeometry, type PrintOptions, type SheetGeometry, type Side } from "../print/imposition";
 import { buildSheet } from "../print/printJob";
 import { el } from "./overlay";
 
@@ -17,8 +18,8 @@ export type PageColumns = 0 | 1 | 2 | 3 | 4;
 
 /** Print options that change what the sheets look like (not the range or two-sided printing). */
 export function pageViewKey(options: PrintOptions): string {
-  const { layout, paper, orientation, scaleMode, scaleValue, alignH, alignV, margin, border, marginFrame, gutterMargin } = options;
-  return JSON.stringify([layout, paper, orientation, scaleMode, scaleValue, alignH, alignV, margin, border, marginFrame, gutterMargin]);
+  const { layout, paper, orientation, scaleMode, scaleValue, alignH, alignV, margin, border, marginFrame, gutterMargin, wideTables, minFontPt, repeatHeaders } = options;
+  return JSON.stringify([layout, paper, orientation, scaleMode, scaleValue, alignH, alignV, margin, border, marginFrame, gutterMargin, wideTables, minFontPt, repeatHeaders]);
 }
 
 interface SheetBox {
@@ -29,8 +30,18 @@ interface SheetBox {
   filled: boolean;
 }
 
+export interface PageViewHost {
+  onScroll(): void;
+  /** Right click on a page of a document with orientation notes. */
+  pageMenu(target: OrientationTarget, x: number, y: number): void;
+  /** Removes your exceptions that no longer match the document. */
+  removeOrphans(orphans: LocalException[]): void;
+}
+
 export class PageView {
   readonly element = el("section", { className: "doc-view page-view", tabIndex: -1 });
+  /** What decides the orientation of the pages (settings, markers, your exceptions). */
+  private info = el("div", { className: "page-info" });
   private grid = el("div", { className: "page-grid" });
   private status = el("p", { className: "mdz-hint page-status" });
   private pages: PrintPages | null = null;
@@ -44,9 +55,11 @@ export class PageView {
   /** Key of the options and document the sheets were built for. */
   key = "";
 
-  constructor(onScroll: () => void) {
-    this.element.append(this.status, this.grid);
-    this.element.addEventListener("scroll", onScroll);
+  constructor(private host: PageViewHost) {
+    this.element.append(this.info, this.status, this.grid);
+    this.info.hidden = true;
+    this.element.addEventListener("scroll", () => host.onScroll());
+    this.element.addEventListener("contextmenu", (e) => this.onContextMenu(e));
     // Sheets are filled only near the visible area; long documents would otherwise clone a lot of DOM.
     this.observer = new IntersectionObserver((entries) => entries.forEach((e) => e.isIntersecting && this.fill(e.target as HTMLElement)), {
       root: this.element,
@@ -65,12 +78,15 @@ export class PageView {
     this.key = key;
     this.status.textContent = "Preparing pages…";
     this.status.hidden = false;
-    const paper = PAPERS[options.paper];
-    // Like the print dialog: Markdown printed one page per landscape sheet is paginated for the landscape width.
-    const wide = options.layout === "1" && options.orientation === "landscape";
-    const pages = await view.printPages(wide ? { width: paper.height, height: paper.width } : paper, (done, total) => {
-      if (token === this.token) this.status.textContent = `Preparing pages… ${done}/${total}`;
-    });
+    // The same pages as the print dialog prepares.
+    const setup = pageSetup(options);
+    const pages = await view.printPages(
+      setup.format,
+      (done, total) => {
+        if (token === this.token) this.status.textContent = `Preparing pages… ${done}/${total}`;
+      },
+      setup.layout,
+    );
     if (token !== this.token) {
       pages.dispose();
       return;
@@ -85,15 +101,49 @@ export class PageView {
     this.sheets = sides.map((side, i) => {
       const geo = sheetGeometry(options.layout, options.paper, side.orientation ?? "portrait");
       const holder = el("div", { className: "page-sheet" });
-      const box = el("figure", { className: "page-box" }, holder, el("figcaption", { textContent: caption(side, i, options) }));
+      const box = el("figure", { className: "page-box" }, holder, el("figcaption", { textContent: caption(side, i, options, pages) }));
       box.dataset.index = String(i);
       return { side, geo, box, holder, filled: false };
     });
     this.grid.replaceChildren(...this.sheets.map((s) => s.box));
     this.status.hidden = true;
+    this.showInfo(pages);
     this.layout();
     this.element.scrollTop = ratio * this.element.scrollHeight;
     for (const s of this.sheets) this.observer.observe(s.box);
+  }
+
+  /** The lines explaining the orientation, and a way to drop exceptions that no longer match. */
+  private showInfo(pages: PrintPages): void {
+    const notes = pages.notes;
+    this.info.hidden = !notes;
+    if (!notes) return;
+    const lines = notes.summary.map((line) => el("div", { textContent: line }));
+    const hint = el("div", { className: "mdz-hint", textContent: "Right-click a page to turn it, or to copy a marker for the file." });
+    const parts: HTMLElement[] = [...lines, hint];
+    if (notes.orphans.length) {
+      const remove = el("button", { className: "mdz-settings-button", textContent: "Remove them" });
+      remove.addEventListener("click", () => this.host.removeOrphans(notes.orphans));
+      parts.splice(lines.length, 0, el("div", {}, remove));
+    }
+    this.info.replaceChildren(...parts);
+  }
+
+  private onContextMenu(e: MouseEvent): void {
+    const notes = this.pages?.notes;
+    const box = (e.target as Element).closest<HTMLElement>(".page-box");
+    if (!notes || !box) return;
+    const side = this.sheets[Number(box.dataset.index)]?.side;
+    if (!side) return;
+    // The page under the pointer when a sheet holds several.
+    const slot = (e.target as Element).closest(".mdz-slot");
+    const slots = slot ? [...slot.parentElement!.querySelectorAll(":scope > .mdz-slot")] : [];
+    const page = side.slots[Math.max(0, slots.indexOf(slot!))] ?? side.slots.find((s) => s !== null);
+    const target = page === null || page === undefined ? null : notes.target(page);
+    if (!target) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.host.pageMenu(target, e.clientX, e.clientY);
   }
 
   setLayout(columns: PageColumns, zoom: number): void {
@@ -154,9 +204,13 @@ export class PageView {
   }
 }
 
-function caption(side: Side, index: number, options: PrintOptions): string {
-  const pages = side.slots.filter((s): s is number => s !== null).map((n) => n + 1);
+function caption(side: Side, index: number, options: PrintOptions, source: PrintPages): string {
+  const shown = side.slots.filter((s): s is number => s !== null);
+  const pages = shown.map((n) => n + 1);
   const what = pages.length === 0 ? "blank" : pages.length === 1 ? `page ${pages[0]}` : `pages ${pages.join(", ")}`;
-  if (options.layout === "booklet" || options.duplex !== "none") return `Sheet ${Math.floor(index / 2) + 1}, ${index % 2 ? "back" : "front"} · ${what}`;
-  return options.layout === "1" ? `Page ${pages[0]}` : `Sheet ${index + 1} · ${what}`;
+  // Why a page is turned (or kept) when it is not simply following the paper.
+  const notes = shown.map((n) => [n + 1, source.notes?.page(n) ?? ""] as const).filter(([, note]) => note);
+  const why = notes.length ? ` · ${notes.map(([n, note]) => (shown.length > 1 ? `p. ${n} ${note}` : note)).join("; ")}` : "";
+  if (options.layout === "booklet" || options.duplex !== "none") return `Sheet ${Math.floor(index / 2) + 1}, ${index % 2 ? "back" : "front"} · ${what}${why}`;
+  return options.layout === "1" ? `Page ${pages[0]}${why}` : `Sheet ${index + 1} · ${what}${why}`;
 }

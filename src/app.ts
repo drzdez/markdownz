@@ -12,7 +12,9 @@ import { DEFAULT_CONFIG, DEFAULT_SESSION, type Config, type Session } from "./st
 import { dropIndex, indicesToClose, moveItem, type CloseScope } from "./tabops";
 import { showContextMenu, visibleKeys, type MenuItem } from "./ui/contextMenu";
 import { folderIcon } from "./ui/icons";
-import { DEFAULT_PRINT_OPTIONS, type PrintOptions } from "./print/imposition";
+import { DEFAULT_PRINT_OPTIONS, type Orientation, type PrintOptions } from "./print/imposition";
+import { pruneExceptions, sameAnchor, type LocalException } from "./print/orientation";
+import type { OrientationTarget } from "./formats/types";
 import { pickForward, showHelp, showHistoryTree, showSettings } from "./ui/dialogs";
 import { PageView, pageViewKey, type PageColumns } from "./ui/pageView";
 import { openPrintDialog } from "./ui/printDialog";
@@ -131,6 +133,7 @@ export class App {
   async start(): Promise<void> {
     const saved = await backend.loadState<Partial<Config>>("config");
     this.config = { ...DEFAULT_CONFIG, ...saved };
+    if (this.config.pageExceptions) this.config.pageExceptions = pruneExceptions(this.config.pageExceptions, Date.now());
     this.session = { ...DEFAULT_SESSION, ...(await backend.loadState<Session>("session")) };
     initTheme(this.config.theme, () => this.rerenderAll());
     for (const format of FORMATS) format.configure?.(this.config);
@@ -258,6 +261,7 @@ export class App {
       // Switching to an already rendered tab also counts as viewing the document.
       if (tab.format) this.session.recent = touchRecent(this.session.recent, tab.path, tab.history.current.title, Date.now());
     }
+    this.touchExceptions(tab.path);
     if (tab === this.active) tab.scroller?.focus({ preventScroll: true });
     this.scheduleSave();
   }
@@ -600,13 +604,18 @@ export class App {
       return;
     }
     if (!tab.pages) {
-      tab.pages = new PageView(() => this.scheduleSave(1000));
+      tab.pages = new PageView({
+        onScroll: () => this.scheduleSave(1000),
+        pageMenu: (target, x, y) => this.showPageMenu(tab, target, x, y),
+        removeOrphans: (orphans) => this.removeExceptions(tab.path, orphans),
+      });
       tab.frame.append(tab.pages.element);
     }
     tab.pages.setLayout(this.session.pageColumns as PageColumns, this.session.zoom);
     tab.showMode();
     const options = this.printOptions();
-    const key = `${tab.version}:${pageViewKey(options)}`;
+    // Your orientation exceptions for the document change its pages too.
+    const key = `${tab.version}:${pageViewKey(options)}:${JSON.stringify(this.config.pageExceptions?.[tab.path]?.items ?? [])}`;
     if (tab.pages.key === key) return;
     try {
       await tab.pages.build(view, options, key);
@@ -645,6 +654,86 @@ export class App {
     this.pagesTimer = window.setTimeout(() => {
       for (const t of this.panes) if (t.pageMode) void this.buildPages(t);
     }, 400);
+  }
+
+  /**
+   * Right click on a page: turn it (your exception, stored on this computer)
+   * or copy a marker for the file. Every entry says what wins over what.
+   */
+  private showPageMenu(tab: Tab, target: OrientationTarget, x: number, y: number): void {
+    const check = (on: boolean) => (on ? "checked" : "unchecked");
+    const set = (orientation: Orientation | null) => () => this.setException(tab.path, target, orientation);
+    const yours = (o: Orientation) =>
+      target.marker && target.marker !== o ? `Your exception, overrides the ${target.marker} marker in the file` : "Your exception, saved on this computer";
+    const automatic = target.marker ?? target.automatic;
+    const copy = (o: Orientation) => () => {
+      void navigator.clipboard.writeText(`<!-- markdownz: ${o} -->`);
+      toast(`Marker copied. Paste it on its own line right above the ${target.label.split(" ")[0]} in the .md file (Open with… to edit).`);
+    };
+    const items: (MenuItem | null)[] = [
+      { label: target.label, detail: `Now: ${target.reason}`, disabled: true, action: () => {} },
+      null,
+    ];
+    if (!target.turnable) {
+      items.push({ label: "Every page is landscape", detail: "Orientation: Landscape in the print settings", disabled: true, action: () => {} });
+    } else {
+      items.push(
+        { label: "Landscape page", detail: yours("landscape"), className: check(target.local === "landscape"), action: set("landscape") },
+        { label: "Portrait page", detail: `${yours("portrait")}; wide content is shrunk`, className: check(target.local === "portrait"), action: set("portrait") },
+        {
+          label: `Automatic (${automatic})`,
+          detail: target.marker ? `Follows the ${target.marker} marker in the file` : "Follows the print settings",
+          className: check(!target.local),
+          action: set(null),
+        },
+      );
+    }
+    items.push(
+      null,
+      { label: "Copy landscape marker", detail: "<!-- markdownz: landscape --> for the .md file; travels with the document", action: copy("landscape") },
+      { label: "Copy portrait marker", detail: "<!-- markdownz: portrait -->; your exception here still wins over it", action: copy("portrait") },
+      { label: "Print settings…", detail: "Wide tables, smallest text, table headers", action: () => this.print() },
+    );
+    showContextMenu(x, y, items);
+  }
+
+  /** Stores (or removes, with null) your orientation exception for a block of a document. */
+  private setException(path: string, target: OrientationTarget, orientation: Orientation | null): void {
+    const all = { ...this.config.pageExceptions };
+    const items = (all[path]?.items ?? []).filter((e) => !sameAnchor(e.anchor, target.anchor));
+    if (orientation) items.push({ anchor: target.anchor, orientation, label: target.label });
+    if (items.length) all[path] = { used: Date.now(), items };
+    else delete all[path];
+    // The views read the exceptions from the config once it is applied.
+    void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(path));
+    toast(
+      orientation
+        ? `${target.label}: ${orientation} page (your exception on this computer).`
+        : `${target.label}: automatic again (${target.marker ? "marker in the file" : "print settings"}).`,
+    );
+  }
+
+  private removeExceptions(path: string, remove: LocalException[]): void {
+    const all = { ...this.config.pageExceptions };
+    const gone = (e: LocalException) => remove.some((r) => sameAnchor(r.anchor, e.anchor) && r.orientation === e.orientation);
+    const items = (all[path]?.items ?? []).filter((e) => !gone(e));
+    if (items.length) all[path] = { ...all[path], items };
+    else delete all[path];
+    void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(path));
+    toast(`Removed ${remove.length} exception${remove.length > 1 ? "s" : ""} that no longer matched.`);
+  }
+
+  /** Rebuilds the shown page views of a document (after its exceptions changed). */
+  private refreshPageViews(path: string): void {
+    for (const t of this.panes) if (t.pageMode && samePath(t.path, path)) void this.buildPages(t);
+  }
+
+  /** Keeps the exceptions of a document that is still used; old ones are pruned at start. */
+  private touchExceptions(path: string): void {
+    const doc = this.config.pageExceptions?.[path];
+    if (!doc || Date.now() - doc.used < 24 * 3600 * 1000) return;
+    this.config = { ...this.config, pageExceptions: { ...this.config.pageExceptions, [path]: { ...doc, used: Date.now() } } };
+    void backend.saveState("config", this.config);
   }
 
   /** The toolbar's view menu: documents side by side and the page view. */

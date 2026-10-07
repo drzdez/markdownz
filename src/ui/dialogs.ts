@@ -179,6 +179,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl+\\ · right click on tab", "Documents side by side (▥ menu: 2, 3, 4)"],
   ["Ctrl+Alt+← / →", "Previous / next document side by side"],
   ["Ctrl+Shift+P", "Pages as printed / continuous (sheets per row in the ▥ menu)"],
+  ["Right click on a page", "Turn it landscape / portrait, copy a marker for the file"],
   ["Ctrl+,", "Settings and plugins"],
   ["Click a diagram", "Enlarge; wheel zooms, drag pans"],
   ["F1", "This help"],

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dominantOrientation, flipEdge, impose, orientSides, parseRange, passes, placePage, preferredOrientation, sheetCount, sheetGeometry, slotSize, type Side } from "./imposition";
-import { paginate } from "./paginate";
+import { groupColumns, paginate, paginateMixed } from "./paginate";
+import { decide, makeAnchor, markersToAnchors, parseMarker, pruneExceptions, resolveMarkers, type MarkerValue } from "./orientation";
 
 describe("page ranges", () => {
   it("parses ranges into zero-based indexes", () => {
@@ -79,6 +80,68 @@ describe("pagination", () => {
   });
 });
 
+describe("mixed pagination", () => {
+  // Portrait pages hold 1000 px, landscape pages 700 px.
+  const rows = (from: number, to: number, step = 50) => Array.from({ length: (to - from) / step }, (_, i) => from + (i + 1) * step);
+
+  it("keeps portrait pages without wide blocks", () => {
+    expect(paginateMixed(rows(0, 2000), 2000, 1000, 700, [])).toEqual([
+      { start: 0, end: 1000, landscape: false },
+      { start: 1000, end: 2000, landscape: false },
+    ]);
+  });
+
+  it("puts text above a wide block on the same landscape page", () => {
+    // The table starts at 300, within the first 700 px: page 1 is landscape and continues into the table.
+    const pages = paginateMixed(rows(0, 2000), 2000, 1000, 700, [{ top: 300, bottom: 1200 }]);
+    expect(pages[0]).toEqual({ start: 0, end: 700, landscape: true, cause: 0 });
+    expect(pages[1]).toEqual({ start: 700, end: 1400, landscape: true, cause: 0 });
+    expect(pages[2]).toEqual({ start: 1400, end: 2000, landscape: false });
+  });
+
+  it("repeats table headers on pages starting inside the table", () => {
+    // Table 200-2600 with a 50 px header (200-250); rows every 50 px.
+    const pages = paginateMixed(rows(0, 3000), 3000, 1000, 700, [], new Set([250]), [{ top: 200, bottom: 250, end: 2600 }]);
+    expect(pages[0]).toEqual({ start: 0, end: 1000, landscape: false });
+    // The header takes 50 px, so the second page holds 950 px of the table.
+    expect(pages[1]).toEqual({ start: 1000, end: 1950, landscape: false, header: { top: 200, bottom: 250 } });
+    expect(pages[2]).toEqual({ start: 1950, end: 2900, landscape: false, header: { top: 200, bottom: 250 } });
+    expect(pages[3]).toEqual({ start: 2900, end: 3000, landscape: false });
+  });
+
+  it("moves a wide block starting low on a portrait page to the next page", () => {
+    const pages = paginateMixed(rows(0, 2000), 2000, 1000, 700, [{ top: 850, bottom: 1300 }]);
+    expect(pages[0]).toEqual({ start: 0, end: 850, landscape: false });
+    expect(pages[1]).toEqual({ start: 850, end: 1550, landscape: true, cause: 0 });
+  });
+
+  it("ends a landscape page before a block that must stay portrait", () => {
+    // Wide block 100-400 turns page 1; the block at 500-900 must be portrait.
+    const pages = paginateMixed(rows(0, 2000), 2000, 1000, 700, [{ top: 100, bottom: 400 }], new Set(), [], [], [{ top: 500, bottom: 900 }]);
+    expect(pages[0]).toEqual({ start: 0, end: 500, landscape: true, cause: 0 });
+    expect(pages[1]).toEqual({ start: 500, end: 1500, landscape: false });
+  });
+
+  it("starts a new page at page breaks", () => {
+    const pages = paginateMixed(rows(0, 2000), 2000, 1000, 700, [], new Set(), [], [420]);
+    expect(pages.map((p) => [p.start, p.end])).toEqual([[0, 420], [420, 1400], [1400, 2000]]);
+  });
+});
+
+describe("table column groups", () => {
+  it("keeps tables that fit in one group", () => {
+    expect(groupColumns([100, 100, 100], 400)).toEqual([[1, 2]]);
+  });
+
+  it("repeats the first column and fills groups greedily", () => {
+    expect(groupColumns([100, 150, 150, 150, 150], 400)).toEqual([[1, 2], [3, 4]]);
+  });
+
+  it("gives an over-wide column a group of its own", () => {
+    expect(groupColumns([100, 500, 100], 400)).toEqual([[1], [2]]);
+  });
+});
+
 describe("orientation", () => {
   const sides = (...slots: (number | null)[][]): Side[] => slots.map((s) => ({ slots: s }));
   const landscape = new Set([1, 2]);
@@ -147,5 +210,57 @@ describe("placement", () => {
     // Without them the pages meet at the fold.
     expect(slotSize(sheetGeometry("2", "a4", "landscape"), 10, false)).toEqual({ width: (297 - 20) / 2, height: 190 });
     expect(slotSize(sheetGeometry("4", "a4", "portrait"), 5, true)).toEqual({ width: 105 - 10, height: 148.5 - 10 });
+  });
+});
+
+describe("orientation markers", () => {
+  const b = { block: true } as const;
+  const m = (mark: MarkerValue) => ({ mark });
+
+  it("parses marker comments", () => {
+    expect(parseMarker(" Landscape ")).toBe("landscape");
+    expect(parseMarker("landscape   START")).toBe("landscape start");
+    expect(parseMarker("pagebreak")).toBe("page break");
+    expect(parseMarker("sideways")).toBeNull();
+    expect(markersToAnchors("<p>a</p>\n<!-- markdownz: portrait -->\n<!-- other -->")).toBe(
+      '<p>a</p>\n<span class="mdz-mark" data-mdz="portrait"></span>\n<!-- other -->',
+    );
+  });
+
+  it("applies a marker to the next block only", () => {
+    const r = resolveMarkers([b, m("landscape"), b, b]);
+    expect(r.orientation).toEqual([undefined, "landscape", undefined]);
+  });
+
+  it("applies ranges, with next-block markers winning inside", () => {
+    const r = resolveMarkers([m("landscape start"), b, m("portrait"), b, b, m("landscape end"), b]);
+    expect(r.orientation).toEqual(["landscape", "portrait", "landscape", undefined]);
+  });
+
+  it("records page breaks and unused markers", () => {
+    const r = resolveMarkers([b, m("page break"), b, m("portrait end"), m("landscape")]);
+    expect([...r.breaks]).toEqual([1]);
+    expect(r.unused).toBe(2);
+  });
+});
+
+describe("orientation exceptions", () => {
+  it("lets your exception win over a marker, and says so", () => {
+    expect(decide("portrait", "landscape")).toEqual({ orientation: "portrait", source: "yours", overrules: { source: "marker", orientation: "landscape" } });
+    expect(decide(undefined, "landscape")).toEqual({ orientation: "landscape", source: "marker" });
+    expect(decide(undefined, undefined)).toEqual({ orientation: undefined, source: "settings" });
+  });
+
+  it("anchors blocks by heading and text, not by position", () => {
+    const a = makeAnchor("TABLE", "  Very   wide ", "Column0 Column1\n row0");
+    expect(a).toEqual(makeAnchor("table", "very wide", "column0   column1 row0"));
+    expect(a.hash).not.toBe(makeAnchor("table", "very wide", "column0 column2").hash);
+  });
+
+  it("prunes documents not opened for a long time", () => {
+    const day = 24 * 3600 * 1000;
+    const doc = (used: number) => ({ used, items: [{ anchor: makeAnchor("p", "", "x"), orientation: "landscape" as const, label: "x" }] });
+    const now = 1000 * day;
+    expect(Object.keys(pruneExceptions({ a: doc(now - day), b: doc(now - 200 * day), c: { used: now, items: [] } }, now))).toEqual(["a"]);
   });
 });

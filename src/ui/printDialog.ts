@@ -1,11 +1,11 @@
 import type { DocumentView, PrintPages } from "../formats/types";
 import {
   DEFAULT_PRINT_OPTIONS,
-  PAPERS,
   dominantOrientation,
   flipEdge,
   impose,
   orientSides,
+  pageSetup,
   parseRange,
   passes,
   sheetCount,
@@ -18,6 +18,7 @@ import {
   type PrintOptions,
   type ScaleMode,
   type Side,
+  type WideTables,
 } from "../print/imposition";
 import { buildSheet, printSides } from "../print/printJob";
 import { el, openModal } from "./overlay";
@@ -211,7 +212,41 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     void changed();
   });
 
+  // Wide tables, code and math of documents laid out for the paper (Markdown).
+  const wideTables = select(
+    [
+      ["landscape", "Landscape pages"],
+      ["shrink", "Shrink to fit"],
+      ["none", "As is (may be cut off)"],
+    ],
+    options.wideTables,
+    (v) => {
+      options.wideTables = v as WideTables;
+      void changed();
+    },
+  );
+  wideTables.title = "Landscape pages: the page with a wide table turns landscape, the text keeps its width and continues on the left";
+  const minFont = el("input", { type: "number", min: "4", max: "14", step: "0.5", value: String(options.minFontPt) });
+  minFont.title = "Wide tables are scaled down to fit, but never below this text size; columns that still do not fit continue below";
+  minFont.addEventListener("input", () => {
+    const value = Number(minFont.value);
+    if (minFont.value.trim() && value >= 4 && value <= 14) {
+      options.minFontPt = value;
+      void changed();
+    }
+  });
+  const repeatHeaders = el("input", { type: "checkbox", checked: options.repeatHeaders });
+  repeatHeaders.addEventListener("change", () => {
+    options.repeatHeaders = repeatHeaders.checked;
+    void changed();
+  });
+  const repeatLabel = el("label", { title: "A table continuing on the next page shows its header rows there again" }, repeatHeaders, " Repeat table headers on each page");
+  const wideField = el("label", { className: "mdz-field" }, el("span", { textContent: "Wide tables" }), wideTables);
+  const minFontField = el("label", { className: "mdz-field" }, el("span", { textContent: "Smallest text pt" }), minFont);
+
   const summary = el("p", { className: "mdz-print-summary" });
+  /** What decides the page orientation of a reflowing document (settings, markers, your exceptions). */
+  const orientationNotes = el("div", { className: "mdz-print-notes" });
   const hint = el("p", { className: "mdz-hint" });
   const printButton = el("button", { className: "primary", textContent: "Print…" });
   const cancel = el("button", { textContent: "Cancel" });
@@ -228,6 +263,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     reverseLabel,
     field("Paper", paper),
     field("Pages", range),
+    ...(view.reflows ? [wideField, minFontField, repeatLabel] : []),
     el(
       "fieldset",
       { className: "mdz-placement" },
@@ -241,6 +277,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
       el("label", {}, marginFrame, " Frame along the sheet margins"),
     ),
     summary,
+    orientationNotes,
     hint,
     el("div", { className: "mdz-print-buttons" }, reset, el("span", { className: "spacer" }), cancel, printButton),
   );
@@ -270,6 +307,9 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     border.checked = options.border;
     marginFrame.checked = options.marginFrame;
     gutterMargin.checked = options.gutterMargin;
+    wideTables.value = options.wideTables;
+    minFont.value = String(options.minFontPt);
+    repeatHeaders.checked = options.repeatHeaders;
     syncScale();
   }
 
@@ -278,19 +318,20 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
    * paginated for the landscape width. (PDF pages keep their own size.)
    */
   async function getPages(): Promise<PrintPages> {
-    const p = PAPERS[options.paper];
-    const wide = options.layout === "1" && options.orientation === "landscape";
-    const format = wide ? { width: p.height, height: p.width } : p;
-    const key = `${options.paper}:${wide}`;
+    const { format, layout, key } = pageSetup(options);
     if (pages && pagesKey === key) return pages;
     if (pages && pages !== lastPages) pages.dispose();
     lastPages?.dispose();
     lastPages = null;
     pages = null;
     summary.textContent = "Preparing pages…";
-    const result = await view.printPages!(format, (done, total) => {
-      summary.textContent = `Preparing pages… ${done}/${total}`;
-    });
+    const result = await view.printPages!(
+      format,
+      (done, total) => {
+        summary.textContent = `Preparing pages… ${done}/${total}`;
+      },
+      layout,
+    );
     pages = lastPages = result;
     pagesKey = key;
     return result;
@@ -300,6 +341,8 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     reverseLabel.hidden = options.duplex !== "manual";
     gutterLabel.hidden = options.layout === "1";
     orientation.disabled = options.layout === "booklet";
+    // Landscape for everything: wide tables can only shrink.
+    wideField.hidden = options.layout === "1" && options.orientation === "landscape";
     const orientations = new Set(sides.map((s) => s.orientation));
     const edge = flipEdge(dominantOrientation(sides));
     let text: string;
@@ -348,6 +391,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     if (options.duplex === "long" || options.duplex === "short") options.duplex = flipEdge(dominantOrientation(sides));
     save(options);
 
+    orientationNotes.replaceChildren(...(source.notes?.summary ?? []).map((line) => el("div", { textContent: line })));
     const sheets = sheetCount(sides.length, options.duplex);
     summary.textContent = `${selection.length} of ${source.count} pages → ${sheets} ${sheets === 1 ? "sheet" : "sheets"} of paper`;
     describe(sides);

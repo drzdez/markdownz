@@ -10,6 +10,17 @@ export type AlignH = "left" | "center" | "right";
 export type AlignV = "top" | "center" | "bottom";
 /** fit = as large as the slot allows; percent of the real size; target width or height in mm. */
 export type ScaleMode = "fit" | "percent" | "width" | "height";
+/** Tables (and code, math) wider than the text: on landscape pages, scaled to the text width, or cut off. */
+export type WideTables = "landscape" | "shrink" | "none";
+
+/** How a reflowing document (Markdown) is laid out on its pages. */
+export interface PageLayoutOptions {
+  wideTables: WideTables;
+  /** Wide content is never scaled below this text size; what still does not fit continues below. */
+  minFontPt: number;
+  /** Repeat the header rows of a table on every page it continues on. */
+  repeatHeaders: boolean;
+}
 
 export interface PrintOptions {
   layout: Layout;
@@ -37,6 +48,9 @@ export interface PrintOptions {
    * two pages behaves like two A5 sheets, each with its own margins.
    */
   gutterMargin: boolean;
+  wideTables: WideTables;
+  minFontPt: number;
+  repeatHeaders: boolean;
 }
 
 /** Defaults (also what Reset restores): automatic where possible, two-sided, no margins, no frames. */
@@ -55,7 +69,24 @@ export const DEFAULT_PRINT_OPTIONS: PrintOptions = {
   border: false,
   marginFrame: false,
   gutterMargin: true,
+  wideTables: "landscape",
+  minFontPt: 7,
+  repeatHeaders: true,
 };
+
+/**
+ * Page format a document is laid out for, and how wide content is handled.
+ * Markdown printed one page per landscape sheet is laid out for the landscape
+ * width; then every page is landscape already and wide tables can only shrink.
+ */
+export function pageSetup(options: PrintOptions): { format: { width: number; height: number }; layout: PageLayoutOptions; key: string } {
+  const paper = PAPERS[options.paper];
+  const wide = options.layout === "1" && options.orientation === "landscape";
+  const format = wide ? { width: paper.height, height: paper.width } : paper;
+  const wideTables: WideTables = wide && options.wideTables === "landscape" ? "shrink" : options.wideTables;
+  const { minFontPt, repeatHeaders } = options;
+  return { format, layout: { wideTables, minFontPt, repeatHeaders }, key: JSON.stringify([options.paper, wide, wideTables, minFontPt, repeatHeaders]) };
+}
 
 /** Gap between pages sharing a sheet: twice the margin when the fold gets margins too. */
 export function slotGap(margin: number, gutterMargin: boolean): number {

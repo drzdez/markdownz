@@ -5,6 +5,8 @@
 // table of contents, zoom) is shared; each open document gets its own
 // DocumentView created by the plugin that claims the file's extension.
 
+import type { Orientation, PageLayoutOptions } from "../print/imposition";
+import type { BlockAnchor, LocalException } from "../print/orientation";
 import type { Config } from "../state";
 
 export interface ViewContext {
@@ -43,8 +45,38 @@ export interface FindProvider {
   onResult?: (result: FindResult) => void;
 }
 
+/** The block of content a page orientation exception for a page is attached to. */
+export interface OrientationTarget {
+  anchor: BlockAnchor;
+  /** E.g. "table “Product | PG in master …”". */
+  label: string;
+  /** Orientation of the page now, and why. */
+  effective: Orientation;
+  reason: string;
+  /** Your exception for the block, if any. */
+  local?: Orientation;
+  /** A marker in the file for the block, if any. */
+  marker?: Orientation;
+  /** What the print settings alone give. */
+  automatic: Orientation;
+  /** Whether a marker can change anything (false when every page is landscape anyway). */
+  turnable: boolean;
+}
+
+/** Why the pages of a reflowing document have their orientation; shown in the page view and print dialog. */
+export interface PageNotes {
+  /** Short reason for a page, e.g. "landscape · marker in the file"; empty for ordinary pages. */
+  page(index: number): string;
+  /** What is in effect: settings, markers, your exceptions, and anything overruled or ignored. */
+  summary: string[];
+  /** Your exceptions that no longer match any block (the content changed). */
+  orphans: LocalException[];
+  target(index: number): OrientationTarget | null;
+}
+
 /** A document laid out as printable pages (Markdown is paginated, PDF has pages). */
 export interface PrintPages {
+  notes?: PageNotes;
   count: number;
   /** Page size in millimetres. */
   size(index: number): { width: number; height: number };
@@ -68,8 +100,13 @@ export interface DocumentView {
   outline(): OutlineItem[];
   /** Current reading position in the same units as OutlineItem.position. */
   position(): number;
-  /** Lays the document out as pages for the print dialog; documents without it cannot be printed. */
-  printPages?(paper: { width: number; height: number }, onProgress?: (done: number, total: number) => void): Promise<PrintPages>;
+  /**
+   * Lays the document out as pages for the print dialog; documents without it cannot be printed.
+   * `layout` applies to documents that reflow (see `reflows`).
+   */
+  printPages?(paper: { width: number; height: number }, onProgress?: (done: number, total: number) => void, layout?: PageLayoutOptions): Promise<PrintPages>;
+  /** The content is laid out for the paper (Markdown), unlike fixed pages (PDF). */
+  readonly reflows?: boolean;
   dispose(): void;
 }
 

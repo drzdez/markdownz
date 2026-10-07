@@ -1,6 +1,7 @@
 import markdownIt, { type MarkdownIt } from "markdown-it";
 import anchor from "markdown-it-anchor";
 import DOMPurify from "dompurify";
+import { markersToAnchors } from "../print/orientation";
 import { fileSrc } from "../backend";
 import { dirname, resolvePath } from "../paths";
 import {
@@ -73,7 +74,8 @@ export class Renderer {
 
   /** Renders markdown into sanitized HTML (no DOM enhancements yet). */
   toHtml(source: string): string {
-    return sanitize(this.md.render(source));
+    // Orientation markers (<!-- markdownz: landscape -->) become invisible anchors for printing.
+    return sanitize(markersToAnchors(this.md.render(source)));
   }
 
   /** Renders into a new detached element, including async plugin work (diagrams). */
