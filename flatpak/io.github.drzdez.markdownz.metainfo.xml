@@ -81,6 +81,12 @@
   </keywords>
 
   <releases>
+    <release version="0.4.0" date="2026-10-07">
+      <description>
+        <p>Made for wide screens: documents side by side, a page view showing the document as printed, and wide tables, diagrams and images using the room next to the text, with a width ruler.</p>
+        <p>Printing: pages with wide tables turn landscape while the text continues on the left, wide content shrinks down to a minimum text size and splits by columns, table headers repeat, and single pages can be turned by markers in the file or your own exceptions.</p>
+      </description>
+    </release>
     <release version="0.3.3" date="2026-10-02">
       <description>
         <p>Windows: opening documents no longer triggers a Windows Installer repair for other users of a per-machine installation. The Flatpak build is back.</p>
