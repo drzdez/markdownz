@@ -172,7 +172,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl+click link", "Open linked document in a new tab"],
   ["Ctrl+F · F3 · Shift+F3", "Find · next · previous"],
   ["Ctrl+B", "Toggle table of contents"],
-  ["Ctrl+wheel · Ctrl+ + / − / 0", "Zoom in / out / reset"],
+  ["Ctrl+wheel · Ctrl+ + / − / 0", "Zoom this document in / out / 100 % (also the % button)"],
   ["F5 · Ctrl+R", "Reload document"],
   ["Ctrl+Shift+O", "Open with another application (editor, …)"],
   ["Ctrl+P", "Print: pages per sheet, booklet, two-sided"],

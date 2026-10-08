@@ -18,6 +18,7 @@ import {
   type PrintOptions,
   type ScaleMode,
   type Side,
+  type Overflow,
   type WideTables,
 } from "../print/imposition";
 import { buildSheet, printSides } from "../print/printJob";
@@ -215,9 +216,9 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
   // Wide tables, code and math of documents laid out for the paper (Markdown).
   const wideTables = select(
     [
-      ["landscape", "Landscape pages"],
-      ["shrink", "Shrink to fit"],
-      ["none", "As is (may be cut off)"],
+      ["landscape", "Turn the page, then shrink"],
+      ["shrink", "Shrink only"],
+      ["none", "As is (cut off)"],
     ],
     options.wideTables,
     (v) => {
@@ -225,9 +226,19 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
       void changed();
     },
   );
-  wideTables.title = "Landscape pages: the page with a wide table turns landscape, the text keeps its width and continues on the left";
+  wideTables.title =
+    "A table wider than the text: first its page turns landscape (the text keeps its width and continues on the left), then the table shrinks down to the smallest table text";
+  const fontSize = el("input", { type: "number", min: "6", max: "24", step: "0.5", value: String(options.fontPt) });
+  fontSize.title = "Text size of the document on paper";
+  fontSize.addEventListener("input", () => {
+    const value = Number(fontSize.value);
+    if (fontSize.value.trim() && value >= 6 && value <= 24) {
+      options.fontPt = value;
+      void changed();
+    }
+  });
   const minFont = el("input", { type: "number", min: "4", max: "14", step: "0.5", value: String(options.minFontPt) });
-  minFont.title = "Wide tables are scaled down to fit, but never below this text size; columns that still do not fit continue below";
+  minFont.title = "Wide tables, code and math shrink to fit, but never below this text size";
   minFont.addEventListener("input", () => {
     const value = Number(minFont.value);
     if (minFont.value.trim() && value >= 4 && value <= 14) {
@@ -241,8 +252,31 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     void changed();
   });
   const repeatLabel = el("label", { title: "A table continuing on the next page shows its header rows there again" }, repeatHeaders, " Repeat table headers on each page");
+  const overflow = select(
+    [
+      ["split", "Continue below"],
+      ["cut", "Cut off"],
+    ],
+    options.overflow,
+    (v) => {
+      options.overflow = v as Overflow;
+      void changed();
+    },
+  );
+  overflow.title = "Still too wide at the smallest table text: table columns continue below (first column repeated) and long code lines wrap, or the rest is cut off";
   const wideField = el("label", { className: "mdz-field" }, el("span", { textContent: "Wide tables" }), wideTables);
-  const minFontField = el("label", { className: "mdz-field" }, el("span", { textContent: "Smallest text pt" }), minFont);
+  const minFontField = el("label", { className: "mdz-field" }, el("span", { textContent: "Smallest table text pt" }), minFont);
+  const overflowField = el("label", { className: "mdz-field" }, el("span", { textContent: "Still too wide" }), overflow);
+  const textFieldset = el(
+    "fieldset",
+    { className: "mdz-placement" },
+    el("legend", { textContent: "Text and tables" }),
+    el("label", { className: "mdz-field" }, el("span", { textContent: "Text size pt" }), fontSize),
+    wideField,
+    minFontField,
+    overflowField,
+    repeatLabel,
+  );
 
   const summary = el("p", { className: "mdz-print-summary" });
   /** What decides the page orientation of a reflowing document (settings, markers, your exceptions). */
@@ -263,7 +297,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     reverseLabel,
     field("Paper", paper),
     field("Pages", range),
-    ...(view.reflows ? [wideField, minFontField, repeatLabel] : []),
+    ...(view.reflows ? [textFieldset] : []),
     el(
       "fieldset",
       { className: "mdz-placement" },
@@ -309,6 +343,8 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     gutterMargin.checked = options.gutterMargin;
     wideTables.value = options.wideTables;
     minFont.value = String(options.minFontPt);
+    fontSize.value = String(options.fontPt);
+    overflow.value = options.overflow;
     repeatHeaders.checked = options.repeatHeaders;
     syncScale();
   }
@@ -343,6 +379,8 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     orientation.disabled = options.layout === "booklet";
     // Landscape for everything: wide tables can only shrink.
     wideField.hidden = options.layout === "1" && options.orientation === "landscape";
+    // Left as they are, wide tables are cut off anyway.
+    minFontField.hidden = overflowField.hidden = options.wideTables === "none";
     const orientations = new Set(sides.map((s) => s.orientation));
     const edge = flipEdge(dominantOrientation(sides));
     let text: string;

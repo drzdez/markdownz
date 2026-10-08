@@ -12,12 +12,18 @@ export type AlignV = "top" | "center" | "bottom";
 export type ScaleMode = "fit" | "percent" | "width" | "height";
 /** Tables (and code, math) wider than the text: on landscape pages, scaled to the text width, or cut off. */
 export type WideTables = "landscape" | "shrink" | "none";
+/** Content still too wide at the smallest text size: table columns continue below, or it is cut off. */
+export type Overflow = "split" | "cut";
 
 /** How a reflowing document (Markdown) is laid out on its pages. */
 export interface PageLayoutOptions {
   wideTables: WideTables;
-  /** Wide content is never scaled below this text size; what still does not fit continues below. */
+  /** Text size of the document on paper. */
+  fontPt: number;
+  /** Wide content is never scaled below this text size. */
   minFontPt: number;
+  /** What happens to content still too wide at the smallest text size. */
+  overflow: Overflow;
   /** Repeat the header rows of a table on every page it continues on. */
   repeatHeaders: boolean;
 }
@@ -49,7 +55,9 @@ export interface PrintOptions {
    */
   gutterMargin: boolean;
   wideTables: WideTables;
+  fontPt: number;
   minFontPt: number;
+  overflow: Overflow;
   repeatHeaders: boolean;
 }
 
@@ -70,7 +78,9 @@ export const DEFAULT_PRINT_OPTIONS: PrintOptions = {
   marginFrame: false,
   gutterMargin: true,
   wideTables: "landscape",
+  fontPt: 10.5,
   minFontPt: 7,
+  overflow: "split",
   repeatHeaders: true,
 };
 
@@ -84,8 +94,12 @@ export function pageSetup(options: PrintOptions): { format: { width: number; hei
   const wide = options.layout === "1" && options.orientation === "landscape";
   const format = wide ? { width: paper.height, height: paper.width } : paper;
   const wideTables: WideTables = wide && options.wideTables === "landscape" ? "shrink" : options.wideTables;
-  const { minFontPt, repeatHeaders } = options;
-  return { format, layout: { wideTables, minFontPt, repeatHeaders }, key: JSON.stringify([options.paper, wide, wideTables, minFontPt, repeatHeaders]) };
+  const { fontPt, minFontPt, overflow, repeatHeaders } = options;
+  return {
+    format,
+    layout: { wideTables, fontPt, minFontPt, overflow, repeatHeaders },
+    key: JSON.stringify([options.paper, wide, wideTables, fontPt, minFontPt, overflow, repeatHeaders]),
+  };
 }
 
 /** Gap between pages sharing a sheet: twice the margin when the fold gets margins too. */

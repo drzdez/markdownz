@@ -23,7 +23,7 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 | Plugins | GitHub alerts (`> [!NOTE]`), footnotes, emoji shortcodes, front matter table, syntax highlighting, KaTeX math (`$…$`, `$$…$$`, fenced ```` ```math ````), Mermaid, Graphviz (```` ```dot ````) |
 | PDF | [pdf.js](https://mozilla.github.io/pdf.js/): pages rendered on demand, text selection, internal and external links, outline in the table of contents, find, zoom that re-renders sharply, `#page=N` links from Markdown, printing |
 | Navigation | Relative links to other `.md` and `.pdf` files open in the same tab; <kbd>Ctrl</kbd>+click or middle click opens a new tab; `#anchors` work across files |
-| Viewing | Zoom (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd>), table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
+| Viewing | Zoom per document (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd>; the % button in the toolbar shows it and resets it to 100 % with one click; every newly opened document starts at 100 %, restored tabs keep theirs), table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
 | Side by side | The ▥ menu shows 2, 3 or 4 documents next to each other (up to 6 via right click on a tab → *Show side by side*); <kbd>Ctrl</kbd>+<kbd>\</kbd> toggles two. Each pane has its own document, scroll position and history; the clicked pane is the active one (toolbar, find, table of contents). Drag the divider to resize, double-click it for equal widths. Panes and widths are restored on the next start |
 | Wide content | Text stays in a readable column. Tables, code blocks, math, diagrams and images that do not fit get just as much room as they need so they do not have to scroll, centred in the window. The **width ruler** above Markdown documents has two rows of stops: the upper one sets the text width, the lower one how wide objects may grow (drag to the window edge for "as wide as the window"); double-click a stop to reset. Both can be switched off in Settings (ruler also in the ▥ menu). Printing has its own rules, see [Printing](#printing) |
 | Page view | *Pages as printed* (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> or the ▥ menu) shows the document laid out with the current print settings (paper, pages per sheet, booklet, orientation, margins, scale, frames) instead of continuous text; 1–4 sheets per row or as many as fit, zoom works as usual, changes in the print dialog apply at once. Find and the outline work in the continuous view |
@@ -76,25 +76,25 @@ On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Press <kbd>F1</kbd> in t
 | Reset | Back to the defaults: 1 page per sheet, orientation and scale automatic, two-sided on the long edge, no margins, no frames |
 | Placement | Scale: fit, % of the real page size, or a target page width or height in mm; horizontal and vertical alignment, margins of the physical sheet in mm (optionally also at the fold, so an A4 sheet with two pages acts as two A5 sheets), optional frames around each page and along the sheet margins |
 
-**Wide tables** (and code and math) in Markdown, option *Wide tables* in the print dialog:
+**Text and tables** (Markdown only, in the print dialog):
 
-| Choice | Result |
+| Setting | Meaning |
 |---|---|
-| Landscape pages (default) | A page showing a wide table is landscape. The text keeps its width and its place on the left and simply continues from the previous page, so a stack bound on the left reads as one column; the table extends to the right. A table wider even than a landscape page is scaled down |
-| Shrink to fit | The table is scaled down to the text width on a normal page |
-| As is | Nothing is changed; what does not fit is cut off |
+| Text size pt | Text size of the document on paper (default 10.5 pt) |
+| Wide tables | *Turn the page, then shrink* (default): a page showing a table (or code, math) wider than the text turns landscape; the text keeps its width and its place on the left and continues from the previous page, so a stack bound on the left reads as one column, and the table extends to the right. A table too wide even for a landscape page then shrinks (text and size together). *Shrink only*: pages stay portrait, the table shrinks to the text width. *As is*: nothing changes, the rest is cut off |
+| Smallest table text pt | Tables, code and math never shrink below this text size (default 7 pt) |
+| Still too wide | *Continue below* (default): table columns that still do not fit continue in further parts of the table below, each repeating the first column; long code lines wrap. Tables with merged cells cannot be split and are cut off. *Cut off*: the rest is cut off at the page edge |
+| Repeat table headers on each page | The header rows of a table appear again on every page it continues on (default on) |
 
-*Repeat table headers on each page* (on by default) shows the header rows of a table again on every page it continues on. Both settings apply to the whole document.
+All of them apply to the whole document; single pages can be turned by exceptions (below). With *Orientation: Landscape* and one page per sheet every page is landscape already, so *Wide tables* is hidden and wide tables shrink.
 
 **Turning single pages.** Exceptions belong to a block of content (a table, a paragraph), never to a page number, because pages move whenever the text or the settings change. Highest priority first:
 
 1. **Your exception** on this computer: right-click a page in the page view → *Landscape page* / *Portrait page* / *Automatic*. Stored in Markdownz's config for the document's full path, so it also works for read-only files. It is tied to the block by the nearest heading and a hash of the block's beginning: edits elsewhere keep it, and when the block itself changes the page view says so and offers to remove it. Exceptions of documents not opened for 180 days are dropped.
 2. **A marker in the file**, an HTML comment on a line of its own (invisible on GitHub and in other viewers): `<!-- markdownz: landscape -->` or `<!-- markdownz: portrait -->` for the next block, `<!-- markdownz: landscape start -->` … `<!-- markdownz: landscape end -->` for a range, `<!-- markdownz: page break -->`. The page menu can copy a marker to paste in an editor.
-3. **The print settings** (*Wide tables*).
+3. **The print settings** (*Wide tables*). Whatever turns a page, a table still too wide for it shrinks down to the smallest table text and then continues below or is cut off, as set.
 
 A portrait exception keeps the block on a portrait page (wide content shrinks). When every page is landscape (*Orientation: Landscape*, one page per sheet) portrait exceptions are ignored, and the page view says so. The page view shows above the pages what is in effect, including anything overruled or ignored, and every page caption says why the page is turned; the print dialog shows the same summary. PDF pages keep their own orientation.
-
-Tables are never scaled below *Smallest text pt* (default 7 pt). Columns that still do not fit continue below in further parts of the table, each repeating the first column; long code lines wrap. With *Orientation: Landscape* and one page per sheet every page is landscape already, so the option is hidden and wide tables shrink.
 
 Markdown documents are split into pages between paragraphs, list items, table rows and code lines, never right after a heading. PDF pages are rendered at print resolution. The job sent to the printer always uses portrait paper and landscape sheets are rotated onto it, so portrait and landscape sheets can be mixed on every platform. In the system dialog keep the scale at 100 % / default.
 

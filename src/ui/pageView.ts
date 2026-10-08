@@ -18,8 +18,8 @@ export type PageColumns = 0 | 1 | 2 | 3 | 4;
 
 /** Print options that change what the sheets look like (not the range or two-sided printing). */
 export function pageViewKey(options: PrintOptions): string {
-  const { layout, paper, orientation, scaleMode, scaleValue, alignH, alignV, margin, border, marginFrame, gutterMargin, wideTables, minFontPt, repeatHeaders } = options;
-  return JSON.stringify([layout, paper, orientation, scaleMode, scaleValue, alignH, alignV, margin, border, marginFrame, gutterMargin, wideTables, minFontPt, repeatHeaders]);
+  const { layout, paper, orientation, scaleMode, scaleValue, alignH, alignV, margin, border, marginFrame, gutterMargin } = options;
+  return JSON.stringify([layout, paper, orientation, scaleMode, scaleValue, alignH, alignV, margin, border, marginFrame, gutterMargin, pageSetup(options).key]);
 }
 
 interface SheetBox {

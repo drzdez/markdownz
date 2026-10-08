@@ -287,6 +287,13 @@ button {
   color: var(--accent);
 }
 
+/* Zoom of the active document; a click resets it to 100 %. */
+.zoom-button {
+  min-width: 52px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
 /* Page view: the document as printed, sheets side by side. */
 .page-view {
   background: var(--chrome);

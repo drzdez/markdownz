@@ -30,9 +30,9 @@ interface Block {
 }
 
 const SETTINGS_TEXT: Record<WideTables, string> = {
-  landscape: "wide tables get landscape pages",
-  shrink: "wide tables are shrunk to fit",
-  none: "wide tables are left as they are",
+  landscape: "a wide table turns its page landscape, then shrinks if needed",
+  shrink: "wide tables shrink to fit, pages stay portrait",
+  none: "wide tables are left as they are (cut off)",
 };
 
 function describe(element: HTMLElement): string {
@@ -100,9 +100,12 @@ export function planOrientation(article: HTMLElement, locals: LocalException[], 
     blocks.forEach((block, i) => {
       if (portrait && block.decision.orientation === "landscape") wide.push({ ...span(i), block: i, source: block.decision.source });
     });
+    // Every wide object turns its pages, including each part of a table split by columns
+    // (the parts share the block); a block turned by an exception already covers all its parts.
+    const turned = new Set(wide.map((c) => c.block));
     for (const w of fitted.wide) {
       const i = Number(w.element.closest<HTMLElement>("[data-mdz-block]")?.dataset.mdzBlock);
-      if (!wide.some((c) => c.block === i)) wide.push({ top: w.top, bottom: w.bottom, block: i, source: "settings" });
+      if (!turned.has(i)) wide.push({ top: w.top, bottom: w.bottom, block: i, source: "settings" });
     }
     const breaks = [...markers.breaks].map((i) => span(i).top);
     const kept = portrait ? blocks.flatMap((b, i) => (b.decision.orientation === "portrait" ? [span(i)] : [])) : [];

@@ -47,6 +47,8 @@ class Tab {
   token = 0;
   /** Zoom the view was last rendered with. */
   zoom = 0;
+  /** Zoom chosen for this document; a newly opened document starts at 100 %. */
+  scale = 1;
   /** Title bar of the pane, visible when documents are shown side by side. */
   readonly head = el("div", { className: "pane-head" });
   readonly headTitle = el("span", { className: "pane-title" });
@@ -137,7 +139,6 @@ export class App {
     this.session = { ...DEFAULT_SESSION, ...(await backend.loadState<Session>("session")) };
     initTheme(this.config.theme, () => this.rerenderAll());
     for (const format of FORMATS) format.configure?.(this.config);
-    this.session.zoom = this.clampZoom(this.session.zoom);
     this.toc.visible = this.session.toc;
     this.bindEvents();
 
@@ -150,6 +151,8 @@ export class App {
     }
     const restored = this.tabs[Math.min(Math.max(this.session.active, 0), this.tabs.length - 1)];
     for (const i of this.session.pageTabs) if (this.tabs[i]) this.tabs[i].pageMode = true;
+    // Restored tabs keep their zoom; anything opened anew starts at 100 %.
+    this.session.zooms?.forEach((z, i) => this.tabs[i] && (this.tabs[i].scale = this.clampZoom(z)));
     this.session.panes.forEach((i, n) => {
       const tab = this.tabs[i];
       if (!tab || this.panes.includes(tab) || this.panes.length >= MAX_PANES) return;
@@ -197,8 +200,8 @@ export class App {
     });
   }
 
-  private viewContext(): ViewContext {
-    return { theme: effectiveTheme(), zoom: this.session.zoom };
+  private viewContext(tab: Tab): ViewContext {
+    return { theme: effectiveTheme(), zoom: tab.scale };
   }
 
   private isViewable = (path: string) => formatFor(path, this.config) !== null;
@@ -255,7 +258,7 @@ export class App {
     for (const t of this.panes) if (t !== tab && this.needsRender(t)) void this.renderTab(t, "restore");
     if (this.needsRender(tab)) await this.renderTab(tab, "restore");
     else {
-      if (tab.zoom !== this.session.zoom) this.applyViewZoom(tab);
+      if (tab.zoom !== tab.scale) this.applyViewZoom(tab);
       if (tab.pageMode) void this.buildPages(tab);
       this.afterShow(tab);
       // Switching to an already rendered tab also counts as viewing the document.
@@ -611,7 +614,7 @@ export class App {
       });
       tab.frame.append(tab.pages.element);
     }
-    tab.pages.setLayout(this.session.pageColumns as PageColumns, this.session.zoom);
+    tab.pages.setLayout(this.session.pageColumns as PageColumns, tab.scale);
     tab.showMode();
     const options = this.printOptions();
     // Your orientation exceptions for the document change its pages too.
@@ -643,7 +646,7 @@ export class App {
   /** Sheets per row in the page view; choosing it also switches the active tab to the page view. */
   private setPageColumns(columns: PageColumns): void {
     this.session.pageColumns = columns;
-    for (const t of this.panes) t.pages?.setLayout(columns, this.session.zoom);
+    for (const t of this.panes) t.pages?.setLayout(columns, t.scale);
     if (this.active && !this.active.pageMode) this.togglePageView();
     this.scheduleSave();
   }
@@ -789,7 +792,7 @@ export class App {
       // Views need to be in the DOM while loading (e.g. PDF layout measures its container).
       if (!tab.view || tab.format !== format) tab.setView(format.createView(this.viewHost(tab)), format);
       try {
-        ({ title } = await tab.view!.load(node.path, this.viewContext()));
+        ({ title } = await tab.view!.load(node.path, this.viewContext(tab)));
       } catch (e) {
         error = e;
       }
@@ -804,7 +807,7 @@ export class App {
     tab.version++;
     tab.renderedNode = node.id;
     tab.stale = false;
-    tab.zoom = this.session.zoom;
+    tab.zoom = tab.scale;
 
     const element = tab.view!.element;
     if (scroll === "keep") element.scrollTop = previousScroll;
@@ -856,7 +859,7 @@ export class App {
       return;
     }
     const scroll = tab.view.element.scrollTop;
-    void tab.view.refresh(this.viewContext()).then(() => {
+    void tab.view.refresh(this.viewContext(tab)).then(() => {
       tab.stale = false;
       tab.version++;
       tab.view!.element.scrollTop = scroll;
@@ -974,16 +977,20 @@ export class App {
   }
 
   private applyZoom(zoom: number, announce = true): void {
-    this.session.zoom = this.clampZoom(zoom);
-    for (const tab of this.panes) this.applyViewZoom(tab);
-    if (announce) toast(`${Math.round(this.session.zoom * 100)} %`);
+    // Zoom belongs to the document in the active tab (pane) only.
+    const tab = this.active;
+    if (!tab) return;
+    tab.scale = this.clampZoom(zoom);
+    this.applyViewZoom(tab);
+    this.renderTabbar();
+    if (announce) toast(`${Math.round(tab.scale * 100)} %`);
     this.scheduleSave();
   }
 
   private applyViewZoom(tab: Tab): void {
-    tab.view?.setZoom(this.session.zoom);
-    tab.pages?.setLayout(this.session.pageColumns as PageColumns, this.session.zoom);
-    tab.zoom = this.session.zoom;
+    tab.view?.setZoom(tab.scale);
+    tab.pages?.setLayout(this.session.pageColumns as PageColumns, tab.scale);
+    tab.zoom = tab.scale;
   }
 
   // ------------------------------------------------------------ session
@@ -1001,6 +1008,7 @@ export class App {
     this.session.panes = this.panes.map((t) => this.tabs.indexOf(t));
     this.session.paneSizes = this.panes.map((t) => Math.round(t.size * 1000) / 1000);
     this.session.pageTabs = this.tabs.flatMap((t, i) => (t.pageMode ? [i] : []));
+    this.session.zooms = this.tabs.map((t) => t.scale);
     this.session.toc = this.toc.visible;
     await backend.saveState("session", this.session);
   }
@@ -1085,6 +1093,10 @@ export class App {
       el("div", { className: "tabs" }, ...items),
       Object.assign(button("+", "Open — recent documents or a file (Ctrl+O)", () => this.showOpenMenu()), { className: "bar-button open-button" }),
       button("⎙", "Print — Ctrl+P", () => this.print(), !tab?.view?.printPages),
+      Object.assign(
+        button(`${Math.round((tab?.scale ?? 1) * 100)} %`, "Zoom of this document — click for 100 % (Ctrl+0); Ctrl+wheel or Ctrl+ +/− to change", () => this.applyZoom(1), !tab),
+        { className: `bar-button zoom-button${tab && tab.scale !== 1 ? " on" : ""}` },
+      ),
       Object.assign(button("▥", "View — documents side by side, pages as printed", () => this.showViewMenu()), {
         className: `bar-button view-button${split || tab?.pageMode ? " on" : ""}`,
       }),
@@ -1170,7 +1182,7 @@ export class App {
       (e) => {
         if (!e.ctrlKey) return;
         e.preventDefault();
-        this.applyZoom(this.session.zoom * Math.exp(-e.deltaY * 0.002));
+        this.applyZoom((this.active?.scale ?? 1) * Math.exp(-e.deltaY * 0.002), false);
       },
       { passive: false },
     );
@@ -1204,8 +1216,8 @@ export class App {
     const key = e.key.toLowerCase();
     let handled = true;
     if (mod && !e.altKey) {
-      if (key === "+" || key === "=" || e.code === "NumpadAdd") this.applyZoom(this.session.zoom * 1.1);
-      else if (key === "-" || e.code === "NumpadSubtract") this.applyZoom(this.session.zoom / 1.1);
+      if (key === "+" || key === "=" || e.code === "NumpadAdd") this.applyZoom((this.active?.scale ?? 1) * 1.1);
+      else if (key === "-" || e.code === "NumpadSubtract") this.applyZoom((this.active?.scale ?? 1) / 1.1);
       else if (key === "0" || e.code === "Numpad0") this.applyZoom(1);
       else if (key === "t" && e.shiftKey) this.reopenClosed();
       else if (key === "o" && e.shiftKey) this.showOpenWithMenu();

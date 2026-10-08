@@ -140,6 +140,8 @@ export interface PaperFit {
   landscapeRoom: number;
   /** Smallest text size in px a wide object may be scaled to. */
   minFontPx: number;
+  /** Still too wide at the smallest size: split tables by columns and wrap code (true), or cut off. */
+  split: boolean;
 }
 
 /** An object laid out wider than the text, for a landscape page. */
@@ -166,7 +168,7 @@ export function fitObjectsForPaper(article: HTMLElement, fit: PaperFit): { wide:
   const roomFor = (element: HTMLElement, available: number) => (fit.modeFor(element) === "landscape" ? fit.landscapeRoom : available);
   // Split tables that cannot fit even at the smallest text size, then measure again.
   const split = objects.filter(({ element }, i) => {
-    if (sizes.least[i] <= sizes.available[i] + 1 || element.tagName !== "TABLE" || fit.modeFor(element) === "none") return false;
+    if (!fit.split || sizes.least[i] <= sizes.available[i] + 1 || element.tagName !== "TABLE" || fit.modeFor(element) === "none") return false;
     const scale = minScale(element, fit.minFontPx);
     const room = roomFor(element, sizes.available[i]);
     return sizes.least[i] * scale > room + 1 && splitTable(element as HTMLTableElement, room / scale);
@@ -192,7 +194,7 @@ export function fitObjectsForPaper(article: HTMLElement, fit: PaperFit): { wide:
       style.width = `${Math.min(most[i], room) + BORDER_SLACK}px`;
     } else {
       const scale = Math.max(room / (least[i] + BORDER_SLACK), minScale(element, fit.minFontPx));
-      if (element.tagName === "PRE" && (least[i] + BORDER_SLACK) * scale > room + 1) {
+      if (fit.split && element.tagName === "PRE" && (least[i] + BORDER_SLACK) * scale > room + 1) {
         // Code cannot shrink further: wrap the long lines.
         Object.assign(style, { width: `${room / scale}px`, whiteSpace: "pre-wrap", overflowWrap: "anywhere" });
       } else style.width = `${least[i] + BORDER_SLACK}px`;

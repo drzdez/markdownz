@@ -171,7 +171,7 @@ class MarkdownView implements DocumentView {
   async printPages(
     paper: { width: number; height: number },
     _onProgress?: unknown,
-    layout: PageLayoutOptions = { wideTables: "shrink", minFontPt: 7, repeatHeaders: true },
+    layout: PageLayoutOptions = { wideTables: "shrink", fontPt: 10.5, minFontPt: 7, overflow: "split", repeatHeaders: true },
   ): Promise<PrintPages> {
     const contentWidth = paper.width - 2 * PAGE_MARGIN;
     const contentHeight = paper.height - 2 * PAGE_MARGIN;
@@ -182,6 +182,7 @@ class MarkdownView implements DocumentView {
     const settings = layout.wideTables === "landscape" && !portrait ? "shrink" : layout.wideTables;
     ensurePaperStyle();
     const article = await getRenderer().render(this.source, { docPath: this.path, theme: "light" });
+    article.style.fontSize = `${layout.fontPt}pt`;
     const measure = el("div", { className: "mdz-paper mdz-measure" }, article);
     measure.style.width = `${contentWidth}mm`;
     document.body.append(measure);
@@ -192,6 +193,7 @@ class MarkdownView implements DocumentView {
       modeFor: plan.modeFor,
       landscapeRoom: wideWidth * PX_PER_MM,
       minFontPx: (layout.minFontPt * 96) / 72,
+      split: layout.overflow === "split",
     });
     const { wide, breaks, portraitBlocks, notes } = plan.finish(fitted);
     const { candidates, avoid, total } = measureBreaks(article);

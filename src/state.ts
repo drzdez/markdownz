@@ -60,6 +60,8 @@ export interface Session {
   pageTabs: number[];
   /** Sheets per row in page view; 0 = as many as fit. */
   pageColumns: number;
+  /** Zoom of each tab (same order as `tabs`); new documents start at 100 %. */
+  zooms?: number[];
 }
 
 export const DEFAULT_CONFIG: Config = { theme: "auto", plugins: {}, formats: {}, openWith: [], checkUpdates: true };
