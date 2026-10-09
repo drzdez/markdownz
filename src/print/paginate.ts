@@ -54,6 +54,8 @@ export function paginateMixed(
   breaks: number[] = [],
   /** Blocks that must be on portrait pages (an exception): a landscape page ends before them. */
   portrait: WideBlock[] = [],
+  /** Blocks that cannot be split (diagrams, pictures, math): moved to the next page when they fit one. */
+  whole: WideBlock[] = [],
 ): MixedPage[] {
   const points = [...new Set(candidates)].filter((c) => c > 0 && c < total).sort((a, b) => a - b);
   const blocks = wide.map((block, index) => ({ ...block, index })).sort((a, b) => a.top - b.top);
@@ -74,9 +76,12 @@ export function paginateMixed(
 
   let start = 0;
   while (total - start > 0.5) {
-    const next = blocks.find((b) => b.bottom > start + 0.5);
+    // (Block edges and break positions are rounded differently; a block ending within 2 px is over.)
+    const next = blocks.find((b) => b.bottom > start + 2);
     const keep = portrait.find((b) => b.top <= start + 0.5 && start < b.bottom - 0.5);
-    const landscape = !keep && !!next && next.top < start + landscapeHeight;
+    // A diagram too tall for a landscape page that comes before the wide block keeps this page portrait.
+    const tall = whole.find((b) => b.top > start + 0.5 && b.top < start + landscapeHeight && b.bottom > start + landscapeHeight);
+    const landscape = !keep && !!next && next.top < start + landscapeHeight && !(tall && next.top >= tall.top);
     // A page starting inside a table repeats its header rows, which take room from the page.
     const repeated = headers.find((h) => h.bottom <= start + 0.5 && start < h.end - 0.5);
     const header = repeated ? { top: repeated.top, bottom: repeated.bottom } : undefined;
@@ -84,6 +89,11 @@ export function paginateMixed(
     let limit = start + height;
     // A portrait page ends right before a wide block starting on it.
     if (!landscape && next && next.top < limit) limit = next.top;
+    // A diagram or picture crossing the end of the page moves to the next page if it fits there.
+    // (A landscape page is lower; the next page may be portrait again, so the taller height counts.)
+    const tallest = Math.max(portraitHeight, landscapeHeight);
+    const crossing = whole.find((b) => b.top > start + 0.5 && b.top < limit && b.bottom > limit && b.bottom - b.top <= tallest);
+    if (crossing) limit = crossing.top;
     // A landscape page ends before a block that must stay portrait.
     const portraitNext = landscape ? portrait.find((b) => b.top > start + 0.5 && b.top < limit) : undefined;
     const pageBreak = forced.find((b) => b > start + 0.5 && b < limit) ?? portraitNext?.top;
@@ -93,7 +103,8 @@ export function paginateMixed(
       pages.push({ start, end: total, landscape, ...extra });
       break;
     }
-    const end = pageBreak !== undefined || (!landscape && next && limit === next.top) ? limit : breakFor(start, height, limit);
+    // Before a wide block the page may end earlier, so a heading moves along with the block.
+    const end = pageBreak !== undefined ? limit : breakFor(start, height, limit);
     pages.push({ start, end, landscape, ...extra });
     start = end;
   }

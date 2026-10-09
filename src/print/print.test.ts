@@ -122,6 +122,20 @@ describe("mixed pagination", () => {
     expect(pages[1]).toEqual({ start: 500, end: 1500, landscape: false });
   });
 
+  it("moves a diagram that would be cut to the next page", () => {
+    // Diagram 800-1300 (500 px high) would cross the end of page 1 at 1000.
+    const pages = paginateMixed(rows(0, 2000), 2000, 1000, 700, [], new Set(), [], [], [], [{ top: 800, bottom: 1300 }]);
+    expect(pages[0]).toEqual({ start: 0, end: 800, landscape: false });
+    expect(pages[1]).toEqual({ start: 800, end: 1800, landscape: false });
+  });
+
+  it("keeps a page portrait when a tall diagram comes before the wide block", () => {
+    // Diagram 300-950 does not fit a 700 px landscape page; the wide block starts after it.
+    const pages = paginateMixed(rows(0, 2000), 2000, 1000, 700, [{ top: 1000, bottom: 1200 }], new Set(), [], [], [], [{ top: 300, bottom: 950 }]);
+    expect(pages[0]).toEqual({ start: 0, end: 1000, landscape: false });
+    expect(pages[1]).toEqual({ start: 1000, end: 1700, landscape: true, cause: 0 });
+  });
+
   it("starts a new page at page breaks", () => {
     const pages = paginateMixed(rows(0, 2000), 2000, 1000, 700, [], new Set(), [], [420]);
     expect(pages.map((p) => [p.start, p.end])).toEqual([[0, 420], [420, 1400], [1400, 2000]]);

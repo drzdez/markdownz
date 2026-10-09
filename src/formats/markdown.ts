@@ -25,6 +25,15 @@ const views = new Set<MarkdownView>();
 /** Your page orientation exceptions per document path (from the config). */
 let exceptions: Record<string, DocExceptions> = {};
 
+/** Diagrams, pictures and display math of a laid-out article: they cannot be split between pages. */
+function wholeBlocks(article: HTMLElement): { top: number; bottom: number }[] {
+  const top = article.getBoundingClientRect().top;
+  return [...article.querySelectorAll("figure.mdz-diagram, .katex-display, p img")]
+    .map((e) => e.getBoundingClientRect())
+    .filter((r) => r.height > 0)
+    .map((r) => ({ top: Math.floor(r.top - top), bottom: Math.ceil(r.bottom - top) }));
+}
+
 /** Header rows of the tables in a laid-out article, for repeating them on following pages. */
 function tableHeaders(article: HTMLElement): TableHeader[] {
   const top = article.getBoundingClientRect().top;
@@ -192,6 +201,8 @@ class MarkdownView implements DocumentView {
     const fitted = fitObjectsForPaper(article, {
       modeFor: plan.modeFor,
       landscapeRoom: wideWidth * PX_PER_MM,
+      portraitHeight: contentHeight * PX_PER_MM,
+      landscapeHeight: (turned.height - 2 * PAGE_MARGIN) * PX_PER_MM,
       minFontPx: (layout.minFontPt * 96) / 72,
       split: layout.overflow === "split",
     });
@@ -200,7 +211,7 @@ class MarkdownView implements DocumentView {
     const headers = layout.repeatHeaders ? tableHeaders(article) : [];
     // A page never ends right after the header rows.
     for (const h of headers) avoid.add(h.bottom);
-    const ranges = paginateMixed(candidates, total, contentHeight * PX_PER_MM, (turned.height - 2 * PAGE_MARGIN) * PX_PER_MM, wide, avoid, headers, breaks, portraitBlocks);
+    const ranges = paginateMixed(candidates, total, contentHeight * PX_PER_MM, (turned.height - 2 * PAGE_MARGIN) * PX_PER_MM, wide, avoid, headers, breaks, portraitBlocks, wholeBlocks(article));
     measure.remove();
 
     return {

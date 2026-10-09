@@ -152,7 +152,7 @@ export function planOrientation(article: HTMLElement, locals: LocalException[], 
             const block = cause && blocks[cause.block];
             if (!cause || !block) return "landscape";
             const over = block.decision.overrules;
-            return `landscape · ${cause.source === "settings" ? "wide table, print settings" : SOURCE_TEXT[cause.source]}${over ? ` (overrides ${SOURCE_TEXT[over.source]})` : ""}`;
+            return `landscape · ${cause.source === "settings" ? "wide content, print settings" : SOURCE_TEXT[cause.source]}${over ? ` (overrides ${SOURCE_TEXT[over.source]})` : ""}`;
           }
           const held = onPage(p).find((b) => portrait && b.decision.orientation === "portrait");
           return held ? `portrait · ${SOURCE_TEXT[held.decision.source]}` : "";

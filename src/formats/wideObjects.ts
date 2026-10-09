@@ -51,6 +51,16 @@ export function wideCandidates(article: HTMLElement): WideObject[] {
   return [...rigid.map((element) => ({ element, kind: "rigid" as Kind })), ...[...diagrams, ...images].map((element) => ({ element, kind: "scalable" as Kind }))];
 }
 
+/** Height / width of a diagram or image at its natural size (0 when unknown). */
+function aspectRatio(element: HTMLElement): number {
+  if (element instanceof HTMLImageElement) return element.naturalWidth ? element.naturalHeight / element.naturalWidth : 0;
+  const svg = element.querySelector("svg");
+  const box = svg?.viewBox.baseVal;
+  if (box?.width) return box.height / box.width;
+  const rect = svg?.getBoundingClientRect();
+  return rect?.width ? rect.height / rect.width : 0;
+}
+
 /** Natural width of a diagram or image, in CSS px. */
 function naturalWidth(element: HTMLElement): number {
   if (element instanceof HTMLImageElement) return element.naturalWidth;
@@ -138,6 +148,9 @@ export interface PaperFit {
   modeFor(element: HTMLElement): WideTables;
   /** Room for wide objects on a landscape page, px. */
   landscapeRoom: number;
+  /** Height of the text area of a portrait and of a landscape page, px (diagrams and images must fit it). */
+  portraitHeight: number;
+  landscapeHeight: number;
   /** Smallest text size in px a wide object may be scaled to. */
   minFontPx: number;
   /** Still too wide at the smallest size: split tables by columns and wrap code (true), or cut off. */
@@ -195,12 +208,31 @@ export function fitObjectsForPaper(article: HTMLElement, fit: PaperFit): { wide:
     } else {
       const scale = Math.max(room / (least[i] + BORDER_SLACK), minScale(element, fit.minFontPx));
       if (fit.split && element.tagName === "PRE" && (least[i] + BORDER_SLACK) * scale > room + 1) {
-        // Code cannot shrink further: wrap the long lines.
-        Object.assign(style, { width: `${room / scale}px`, whiteSpace: "pre-wrap", overflowWrap: "anywhere" });
+        // Code cannot shrink further: wrap the long lines (the code element inside sets white-space itself).
+        Object.assign(style, { width: `${room / scale}px` });
+        for (const e of [element, ...element.querySelectorAll<HTMLElement>("code")]) Object.assign(e.style, { whiteSpace: "pre-wrap", overflowWrap: "anywhere" });
       } else style.width = `${least[i] + BORDER_SLACK}px`;
       style.zoom = String(scale);
     }
     if (mode === "landscape") wide.push(element);
+  });
+  // Diagrams and pictures scale freely, so they are never cut: wider than the text they get
+  // a landscape page in landscape mode, and every one is kept within the height of its page.
+  const pictures = wideCandidates(article).filter((o) => o.kind === "scalable");
+  const textWidth = pictures.map(({ element }) => (element.parentElement ?? article).clientWidth);
+  const natural = pictures.map(({ element }) => naturalWidth(element));
+  const ratios = pictures.map(({ element }) => aspectRatio(element));
+  pictures.forEach(({ element }, i) => {
+    const turn = fit.modeFor(element) === "landscape" && natural[i] > textWidth[i] + 1;
+    let width = turn ? Math.min(natural[i], fit.landscapeRoom) : Math.min(natural[i] || textWidth[i], textWidth[i]);
+    // Room for the heading or caption that belongs to it on the same page.
+    const height = (turn ? fit.landscapeHeight : fit.portraitHeight) * 0.85;
+    if (ratios[i] && width * ratios[i] > height) width = height / ratios[i];
+    if (!turn && width >= textWidth[i] - 1) return; // already as on screen: the text width
+    Object.assign(element.style, { boxSizing: "border-box", maxWidth: "none", width: `${Math.floor(width)}px`, height: element instanceof HTMLImageElement ? "auto" : "" });
+    // Figures have side margins in the paper styles; the width is measured from the text edge.
+    if (element.tagName === "FIGURE") Object.assign(element.style, { marginLeft: "0", marginRight: "0" });
+    if (turn && width > textWidth[i] + 1) wide.push(element);
   });
   const top = article.getBoundingClientRect().top;
   return {
