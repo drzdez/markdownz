@@ -1,7 +1,7 @@
 {
   "name": "markdownz",
   "private": true,
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Fast cross-platform Markdown viewer with Mermaid, math, diagrams and tabbed tree history.",
   "license": "MIT",
   "type": "module",
