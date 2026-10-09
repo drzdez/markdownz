@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.1" date="2026-10-09">
+      <description>
+        <p>Printing: text size setting, a choice between continuing too wide tables below or cutting them off, code lines that wrap instead of being cut, and diagrams and pictures that get landscape pages and are never cut or split. Zoom now belongs to each document, with a button to reset it to 100 %.</p>
+      </description>
+    </release>
     <release version="0.4.0" date="2026-10-07">
       <description>
         <p>Made for wide screens: documents side by side, a page view showing the document as printed, and wide tables, diagrams and images using the room next to the text, with a width ruler.</p>
