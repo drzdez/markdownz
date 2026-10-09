@@ -313,6 +313,7 @@ button {
 }
 
 .page-box {
+  position: relative;
   margin: 0;
 }
 
@@ -422,9 +423,169 @@ button {
   overflow: hidden;
 }
 
-/* Orientation markers from the file are invisible anchors. */
-.mdz-mark {
+/* Orientation markers and source-line anchors from the file are invisible. */
+.mdz-mark,
+.mdz-src {
   display: none;
+}
+
+.markdown-body > .mdz-src:first-child + * {
+  margin-top: 0;
+}
+
+/* Orientation marks over the continuous view (screen only). */
+.mdz-orient-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.mdz-orient-bracket {
+  position: absolute;
+  width: 3px;
+  border-radius: 2px;
+  background: #2f81f7;
+}
+
+.mdz-orient-bracket.yours {
+  background: #2da44e;
+}
+
+.mdz-orient-bracket.portrait {
+  background-image: repeating-linear-gradient(transparent 0 4px, var(--bg) 4px 7px);
+}
+
+.mdz-orient-bracket.rule {
+  background: var(--muted);
+  opacity: 0.6;
+}
+
+/* A moved turn: a double line, linked to the rule it moves. */
+.mdz-orient-bracket.moved {
+  width: 5px;
+  border-left: 2px solid #a371f7;
+  border-right: 2px solid #a371f7;
+  background: none;
+}
+
+/* Where a page starts: dotted when the page is full, solid for page breaks. */
+.mdz-orient-line {
+  position: absolute;
+  height: 0;
+  border-top: 1px dotted var(--muted);
+  opacity: 0.7;
+}
+
+.mdz-orient-line.marker {
+  border-top: 2px dashed #2f81f7;
+}
+
+.mdz-orient-line.yours {
+  border-top: 2px dashed #2da44e;
+}
+
+.mdz-orient-line.turn {
+  border-top-color: #a371f7;
+}
+
+.mdz-orient-label.page-tag {
+  position: absolute;
+  transform: translateY(-50%);
+}
+
+.mdz-orient-label.page-tag.before {
+  transform: translate(-100%, -50%);
+}
+
+.mdz-orient-label.page {
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.mdz-orient-row {
+  position: absolute;
+  display: flex;
+  gap: 6px;
+  transform: translateY(-100%);
+  pointer-events: none;
+}
+
+/* In the left margin: right-aligned to the text, level with the block. */
+.mdz-orient-row.margin {
+  flex-direction: column;
+  align-items: flex-end;
+  transform: translateX(-100%);
+}
+
+.mdz-orient-label {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 2px 0 6px;
+  border: 1px solid #2f81f7;
+  border-radius: 9px;
+  background: var(--bg);
+  color: #2f81f7;
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+  pointer-events: auto;
+  opacity: 0.85;
+}
+
+.mdz-orient-label:hover {
+  opacity: 1;
+}
+
+.mdz-orient-label.yours {
+  border-color: #2da44e;
+  color: #2da44e;
+}
+
+.mdz-orient-label.rule {
+  border-color: var(--border);
+  color: var(--muted);
+}
+
+.mdz-orient-label.moved {
+  border-color: #a371f7;
+  color: #a371f7;
+}
+
+.mdz-orient-label.broken,
+.mdz-orient-label.unused,
+.mdz-orient-label.ignored {
+  border-color: #d29922;
+  color: #d29922;
+  text-decoration: line-through;
+}
+
+.mdz-orient-label button {
+  padding: 0 3px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.mdz-orient-label button:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+/* A setting shown by the button is on (e.g. your page break above the block). */
+.mdz-orient-label button.on {
+  box-shadow: inset 0 0 0 1px currentColor;
+  font-weight: 700;
+}
+
+.mdz-orient-label button:disabled {
+  opacity: 0.3;
+  cursor: default;
 }
 
 /* What decides the page orientation: above the pages and in the print dialog. */

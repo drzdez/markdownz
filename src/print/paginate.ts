@@ -81,7 +81,9 @@ export function paginateMixed(
     const keep = portrait.find((b) => b.top <= start + 0.5 && start < b.bottom - 0.5);
     // A diagram too tall for a landscape page that comes before the wide block keeps this page portrait.
     const tall = whole.find((b) => b.top > start + 0.5 && b.top < start + landscapeHeight && b.bottom > start + landscapeHeight);
-    const landscape = !keep && !!next && next.top < start + landscapeHeight && !(tall && next.top >= tall.top);
+    // A page break before the wide block ends this page first, so the block is not on it.
+    const breakFirst = !!next && forced.some((b) => b > start + 0.5 && b <= next.top + 0.5);
+    const landscape = !keep && !!next && next.top < start + landscapeHeight && !(tall && next.top >= tall.top) && !breakFirst;
     // A page starting inside a table repeats its header rows, which take room from the page.
     const repeated = headers.find((h) => h.bottom <= start + 0.5 && start < h.end - 0.5);
     const header = repeated ? { top: repeated.top, bottom: repeated.bottom } : undefined;
@@ -103,12 +105,24 @@ export function paginateMixed(
       pages.push({ start, end: total, landscape, ...extra });
       break;
     }
-    // Before a wide block the page may end earlier, so a heading moves along with the block.
-    const end = pageBreak !== undefined ? limit : breakFor(start, height, limit);
+    // Before a wide block the page may end earlier, so a heading moves along with the block;
+    // but only white space left before the boundary would make a blank page, so end there.
+    let end = pageBreak !== undefined ? limit : breakFor(start, height, limit);
+    if (limit < start + height && limit - end < 40) end = limit;
     pages.push({ start, end, landscape, ...extra });
     start = end;
   }
   return pages;
+}
+
+/**
+ * Drops pages that show no content, only the white space between blocks (it
+ * happens when a page has to end right before a block that must start a new
+ * page). `content` are the [top, bottom] ranges of the blocks, px.
+ */
+export function dropBlankPages<T extends { start: number; end: number }>(pages: T[], content: { top: number; bottom: number }[]): T[] {
+  const kept = pages.filter((p) => content.some((c) => c.bottom > p.start + 2 && c.top < p.end - 2));
+  return kept.length ? kept : pages.slice(0, 1);
 }
 
 /**

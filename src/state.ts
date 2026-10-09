@@ -28,6 +28,8 @@ export interface Config {
   wideObjects?: boolean;
   /** Width ruler above Markdown documents (default on). */
   ruler?: boolean;
+  /** Orientation marks next to the continuous text of Markdown documents (default on). */
+  orientationMarks?: boolean;
   /** Your page orientation exceptions per document (full path), see print/orientation.ts. */
   pageExceptions?: Record<string, DocExceptions>;
   /** Text column and widest object in CSS px at 100 % zoom (set with the ruler). */

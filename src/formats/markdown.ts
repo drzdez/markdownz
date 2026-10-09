@@ -1,6 +1,7 @@
 import * as backend from "../backend";
-import type { PageLayoutOptions } from "../print/imposition";
-import { measureBreaks, paginateMixed, type TableHeader } from "../print/paginate";
+import { DEFAULT_PRINT_OPTIONS, pageSetup, type PageLayoutOptions, type PrintOptions } from "../print/imposition";
+import { blockTarget, OrientationMarks } from "../ui/orientationMarks";
+import { dropBlankPages, measureBreaks, paginateMixed, type TableHeader } from "../print/paginate";
 import { ensurePaperStyle, waitForImages } from "../print/printJob";
 import { Renderer, slugify } from "../render/renderer";
 import { openDiagram } from "../ui/diagramViewer";
@@ -8,7 +9,7 @@ import { DomFindProvider } from "../ui/domFind";
 import { el } from "../ui/overlay";
 import { Ruler } from "../ui/ruler";
 import type { DocExceptions } from "../print/orientation";
-import { planOrientation } from "./pageOrientation";
+import { planOrientation, readBlocks } from "./pageOrientation";
 import { DEFAULT_TEXT_WIDTH, fitObjectsForPaper, fitWideObjects, type Widths } from "./wideObjects";
 import type { DocumentView, FormatPlugin, OutlineItem, PrintPages, ViewContext, ViewHost } from "./types";
 
@@ -24,6 +25,8 @@ const layout = { wideObjects: true, ruler: true, widths: { text: DEFAULT_TEXT_WI
 const views = new Set<MarkdownView>();
 /** Your page orientation exceptions per document path (from the config). */
 let exceptions: Record<string, DocExceptions> = {};
+/** Show orientation marks in the continuous view, and the print settings they are computed for. */
+const marksSettings = { show: true, print: DEFAULT_PRINT_OPTIONS as PrintOptions, key: "" };
 
 /** Diagrams, pictures and display math of a laid-out article: they cannot be split between pages. */
 function wholeBlocks(article: HTMLElement): { top: number; bottom: number }[] {
@@ -68,6 +71,10 @@ class MarkdownView implements DocumentView {
   private source = "";
   private zoom = 1;
   private fitFrame = 0;
+  private marks: OrientationMarks;
+  /** The marks need computing again (document, settings or exceptions changed). */
+  private marksStale = true;
+  private marksToken = 0;
   private resizeObserver: ResizeObserver;
   private ruler = new Ruler(this.element, {
     widths: () => layout.widths,
@@ -102,7 +109,17 @@ class MarkdownView implements DocumentView {
         host.followLink(href, true);
       }
     });
-    this.element.append(this.ruler.element);
+    this.marks = new OrientationMarks(this.element, (action) => host.orientation?.(action));
+    // Right click on a block: turn its page, add a marker above it, copy a marker.
+    this.element.addEventListener("contextmenu", (e) => {
+      const block = (e.target as Element).closest<HTMLElement>(".markdown-body > [data-mdz-block]");
+      const data = this.marks.current;
+      const target = block && data ? blockTarget(data, Number(block.dataset.mdzBlock)) : null;
+      if (!target || !host.orientationMenu) return;
+      e.preventDefault();
+      host.orientationMenu(target, e.clientX, e.clientY);
+    });
+    this.element.append(this.ruler.element, this.marks.element);
     // The view (window, panes, table of contents) or the article (images loading) changed size.
     this.resizeObserver = new ResizeObserver(() => {
       cancelAnimationFrame(this.fitFrame);
@@ -119,6 +136,36 @@ class MarkdownView implements DocumentView {
     if (!this.article) return;
     fitWideObjects(this.article, this.element, this.zoom, layout.wideObjects ? layout.widths : null);
     if (layout.ruler) this.ruler.update();
+    // Hidden tabs wait until they are shown (the resize observer calls this again).
+    if (this.marksStale && this.element.offsetParent) void this.computeMarks();
+    else this.marks.layout();
+  }
+
+  /** The marks must be computed again, now or when the view is shown. */
+  staleMarks(): void {
+    this.marksStale = true;
+    if (this.element.offsetParent) void this.computeMarks();
+  }
+
+  /**
+   * Lays the document out for paper (as the print dialog would) to find where
+   * pages turn and why, then shows the marks next to the continuous text.
+   */
+  private async computeMarks(): Promise<void> {
+    this.marksStale = false;
+    const token = ++this.marksToken;
+    if (!marksSettings.show || !this.article) {
+      this.marks.set(null);
+      return;
+    }
+    // The screen blocks get the same numbers as the paper blocks.
+    readBlocks(this.article);
+    const setup = pageSetup(marksSettings.print);
+    const pages = await this.printPages(setup.format, undefined, setup.layout).catch(() => null);
+    if (token !== this.marksToken) return;
+    const notes = pages?.notes;
+    this.marks.set(notes ? { blocks: notes.blocks, marks: notes.marks, turnable: notes.turnable, pageStarts: notes.pageStarts } : null);
+    pages?.dispose();
   }
 
   async load(path: string, ctx: ViewContext): Promise<{ title?: string }> {
@@ -137,6 +184,7 @@ class MarkdownView implements DocumentView {
     } else this.element.append(article);
     this.article = article;
     this.resizeObserver.observe(article);
+    this.marksStale = true;
     this.setZoom(ctx.zoom);
   }
 
@@ -211,7 +259,15 @@ class MarkdownView implements DocumentView {
     const headers = layout.repeatHeaders ? tableHeaders(article) : [];
     // A page never ends right after the header rows.
     for (const h of headers) avoid.add(h.bottom);
-    const ranges = paginateMixed(candidates, total, contentHeight * PX_PER_MM, (turned.height - 2 * PAGE_MARGIN) * PX_PER_MM, wide, avoid, headers, breaks, portraitBlocks, wholeBlocks(article));
+    const laidOut = paginateMixed(candidates, total, contentHeight * PX_PER_MM, (turned.height - 2 * PAGE_MARGIN) * PX_PER_MM, wide, avoid, headers, breaks, portraitBlocks, wholeBlocks(article));
+    // A page holding only the space between two blocks is left out.
+    const articleTop = article.getBoundingClientRect().top;
+    const content = [...article.children]
+      .filter((c) => !c.classList.contains("mdz-mark") && !c.classList.contains("mdz-src"))
+      .map((c) => c.getBoundingClientRect())
+      .filter((r) => r.height > 0)
+      .map((r) => ({ top: r.top - articleTop, bottom: r.bottom - articleTop }));
+    const ranges = dropBlankPages(laidOut, content);
     measure.remove();
 
     return {
@@ -257,6 +313,14 @@ export const markdownFormat: FormatPlugin = {
   configure(config) {
     pluginSettings = config.plugins;
     exceptions = config.pageExceptions ?? {};
+    // Marks depend on the print settings and your exceptions; recompute only when they change.
+    marksSettings.show = config.orientationMarks !== false;
+    marksSettings.print = { ...DEFAULT_PRINT_OPTIONS, ...config.print };
+    const key = JSON.stringify([marksSettings.show, pageSetup(marksSettings.print).key, config.pageExceptions ?? {}]);
+    if (key !== marksSettings.key) {
+      marksSettings.key = key;
+      for (const view of views) view.staleMarks();
+    }
     layout.wideObjects = config.wideObjects !== false;
     layout.ruler = config.ruler !== false;
     layout.widths = { text: config.widths?.text ?? DEFAULT_TEXT_WIDTH, objects: config.widths?.objects ?? config.widths?.text ?? DEFAULT_TEXT_WIDTH };

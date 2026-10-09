@@ -6,7 +6,8 @@
 // DocumentView created by the plugin that claims the file's extension.
 
 import type { Orientation, PageLayoutOptions } from "../print/imposition";
-import type { BlockAnchor, LocalException } from "../print/orientation";
+import type { BlockAnchor, LocalException, MarkerValue } from "../print/orientation";
+import type { MarkAction } from "../ui/orientationMarks";
 import type { Config } from "../state";
 
 export interface ViewContext {
@@ -20,6 +21,10 @@ export interface ViewHost {
   followLink(href: string, newTab: boolean): void;
   /** The view scrolled; the app stores the position and syncs the table of contents. */
   onScroll(): void;
+  /** An action on an orientation mark (move a marker in the file, change your exception). */
+  orientation?(action: MarkAction): void;
+  /** Right click on a block: the same orientation menu as on a page of the page view. */
+  orientationMenu?(target: OrientationTarget, x: number, y: number): void;
 }
 
 export interface OutlineItem {
@@ -48,6 +53,8 @@ export interface FindProvider {
 /** The block of content a page orientation exception for a page is attached to. */
 export interface OrientationTarget {
   anchor: BlockAnchor;
+  /** First source line of the block (0-based), -1 when unknown; markers are added above it. */
+  line: number;
   /** E.g. "table “Product | PG in master …”". */
   label: string;
   /** Orientation of the page now, and why. */
@@ -57,10 +64,56 @@ export interface OrientationTarget {
   local?: Orientation;
   /** A marker in the file for the block, if any. */
   marker?: Orientation;
+  /** Your page break above the block. */
+  localBreak?: boolean;
   /** What the print settings alone give. */
   automatic: Orientation;
   /** Whether a marker can change anything (false when every page is landscape anyway). */
   turnable: boolean;
+}
+
+/** A top-level block of a reflowing document, for the orientation marks shown on screen. */
+export interface BlockInfo {
+  /** Source lines [line, end) (0-based), -1 when unknown. */
+  line: number;
+  end: number;
+  label: string;
+  anchor: BlockAnchor;
+  /** The print settings turn its pages (it is wide on paper). */
+  rule: boolean;
+  /** Blocks (indexes) a moved turn of this block's rule covers. */
+  moved?: { from: number; to: number };
+  local?: Orientation;
+  marker?: Orientation;
+  /** Your page break above the block. */
+  localBreak?: boolean;
+  /** Orientation forced by an exception or marker, undefined when the settings decide. */
+  decided?: Orientation;
+  source: "yours" | "marker" | "settings";
+}
+
+/** Where a page starts: in block `block`, at `fraction` of its height (0 = right above it). */
+export interface PageStart {
+  page: number;
+  block: number;
+  fraction: number;
+  /** Why the page starts there: a page break marker, your page break, a turn of the page, or simply full. */
+  cause: "marker" | "yours" | "turn" | "auto";
+  landscape: boolean;
+}
+
+/** An orientation marker in the file. */
+export interface MarkInfo {
+  value: MarkerValue;
+  /** Line of the marker comment (0-based), -1 when unknown (e.g. inside a paragraph). */
+  line: number;
+  /** Index of the block that follows it. */
+  before: number;
+  /** A moved rule: the block it refers to (-1 when not found). */
+  moves?: { tag: string; hash: string; block: number };
+  status: "ok" | "unused" | "broken" | "ignored";
+  /** What it does, or why it does nothing. */
+  note: string;
 }
 
 /** Why the pages of a reflowing document have their orientation; shown in the page view and print dialog. */
@@ -71,7 +124,15 @@ export interface PageNotes {
   summary: string[];
   /** Your exceptions that no longer match any block (the content changed). */
   orphans: LocalException[];
+  blocks: BlockInfo[];
+  marks: MarkInfo[];
+  /** Pages can be turned (they are portrait); false when every page is landscape. */
+  turnable: boolean;
+  /** Where each page after the first starts, for the page lines in the continuous view. */
+  pageStarts: PageStart[];
   target(index: number): OrientationTarget | null;
+  /** The menu target for a block (the one under the pointer) shown on page `page`. */
+  blockTarget(block: number, page: number): OrientationTarget | null;
 }
 
 /** A document laid out as printable pages (Markdown is paginated, PDF has pages). */

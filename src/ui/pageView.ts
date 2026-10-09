@@ -4,6 +4,7 @@
 
 import type { DocumentView, OrientationTarget, PrintPages } from "../formats/types";
 import type { LocalException } from "../print/orientation";
+import { bracketElement, hasMarks, labelElement, LabelRows, markSpecs, pageTag, type MarkAction } from "./orientationMarks";
 import { impose, orientSides, pageSetup, sheetGeometry, type PrintOptions, type SheetGeometry, type Side } from "../print/imposition";
 import { buildSheet } from "../print/printJob";
 import { el } from "./overlay";
@@ -36,6 +37,10 @@ export interface PageViewHost {
   pageMenu(target: OrientationTarget, x: number, y: number): void;
   /** Removes your exceptions that no longer match the document. */
   removeOrphans(orphans: LocalException[]): void;
+  /** An action on an orientation mark, as in the continuous view. */
+  orientation(action: MarkAction): void;
+  /** Whether orientation marks are shown (▥ menu). */
+  showMarks(): boolean;
 }
 
 export class PageView {
@@ -119,7 +124,7 @@ export class PageView {
     this.info.hidden = !notes;
     if (!notes) return;
     const lines = notes.summary.map((line) => el("div", { textContent: line }));
-    const hint = el("div", { className: "mdz-hint", textContent: "Right-click a page to turn it, or to copy a marker for the file." });
+    const hint = el("div", { className: "mdz-hint", textContent: "Right-click a page to turn it or add a marker; the labels beside the pages move or remove markers." });
     const parts: HTMLElement[] = [...lines, hint];
     if (notes.orphans.length) {
       const remove = el("button", { className: "mdz-settings-button", textContent: "Remove them" });
@@ -139,7 +144,10 @@ export class PageView {
     const slot = (e.target as Element).closest(".mdz-slot");
     const slots = slot ? [...slot.parentElement!.querySelectorAll(":scope > .mdz-slot")] : [];
     const page = side.slots[Math.max(0, slots.indexOf(slot!))] ?? side.slots.find((s) => s !== null);
-    const target = page === null || page === undefined ? null : notes.target(page);
+    // The block under the pointer, like in the continuous view; on the margins the page's deciding block.
+    const block = (e.target as Element).closest<HTMLElement>(".mdz-md-clip > .markdown-body > [data-mdz-block]");
+    const target =
+      page === null || page === undefined ? null : block ? notes.blockTarget(Number(block.dataset.mdzBlock), page) : notes.target(page);
     if (!target) return;
     e.preventDefault();
     e.stopPropagation();
@@ -177,6 +185,84 @@ export class PageView {
       if (sheet) sheet.style.transform = `scale(${pxPerMm / PX_PER_MM})`;
     }
     this.element.scrollTop = ratio * this.element.scrollHeight;
+    for (const s of this.sheets) if (s.filled) this.drawMarks(s);
+  }
+
+  /**
+   * Orientation marks over a sheet, like in the continuous view: brackets beside
+   * the parts of blocks on each page, labels where a block starts. Drawn over the
+   * sheet on screen only; the printed pages are built separately.
+   */
+  private drawMarks(s: SheetBox): void {
+    s.box.querySelector(":scope > .mdz-orient-layer")?.remove();
+    const notes = this.pages?.notes;
+    if (!notes || !this.host.showMarks()) return;
+    const data = { blocks: notes.blocks, marks: notes.marks, turnable: notes.turnable, pageStarts: notes.pageStarts };
+    if (!hasMarks(data)) return;
+    const layer = el("div", { className: "mdz-orient-layer page" });
+    const origin = s.box.getBoundingClientRect();
+    const parts: HTMLElement[] = [];
+    // Labels go beside the sheet when there is room there, otherwise onto the page above the block.
+    // Free room left of the sheet: up to the sheet beside it in the same row, or the edge of the view.
+    let edge = this.element.getBoundingClientRect().left;
+    for (const other of this.sheets) {
+      const r = other.box.getBoundingClientRect();
+      if (other !== s && Math.abs(r.top - origin.top) < 4 && r.right <= origin.left + 1) edge = Math.max(edge, r.right);
+    }
+    const beside = origin.left - edge >= 260;
+    const rows = new LabelRows(parts, beside ? -Infinity : Infinity);
+    const { brackets, labels } = markSpecs(data);
+    // The pages on this sheet, in the order of its slots.
+    const shownPages = s.side.slots.filter((x): x is number => x !== null);
+    [...s.holder.querySelectorAll<HTMLElement>(".mdz-md-page")].forEach((page, n) => {
+      const clip = [...page.querySelectorAll<HTMLElement>(":scope > .mdz-md-clip")].pop();
+      const index = shownPages[n];
+      if (!clip || index === undefined) return;
+      // A grey tag per page, to turn it with one click, like the page lines of the continuous view.
+      const size = this.pages!.size(index);
+      const start = index === 0 ? { page: 1, block: 0, fraction: 0, cause: "auto" as const, landscape: false } : data.pageStarts[index - 1];
+      const tag = start && pageTag(data, { ...start, landscape: size.width > size.height });
+      if (tag) {
+        const area = clip.getBoundingClientRect();
+        rows.add(labelElement(tag, (action) => this.host.orientation(action)), area.top - origin.top, beside ? 22 : area.left - origin.left);
+      }
+    });
+    for (const page of s.holder.querySelectorAll<HTMLElement>(".mdz-md-page")) {
+      // The last window shows the page; a first one may repeat table headers.
+      const clip = [...page.querySelectorAll<HTMLElement>(":scope > .mdz-md-clip")].pop();
+      if (!clip) continue;
+      const area = clip.getBoundingClientRect();
+      const pieces = new Map<number, DOMRect>();
+      for (const block of clip.querySelectorAll<HTMLElement>(":scope > .markdown-body > [data-mdz-block]")) {
+        const r = block.getBoundingClientRect();
+        if (r.bottom > area.top + 0.5 && r.top < area.bottom - 0.5) pieces.set(Number(block.dataset.mdzBlock), r);
+      }
+      if (!pieces.size) continue;
+      const lastBlock = Math.max(...pieces.keys());
+      for (const b of brackets) {
+        const shown = [...pieces].filter(([i]) => i >= b.from && i <= b.to).map(([, r]) => r);
+        if (!shown.length) continue;
+        const top = Math.max(area.top, Math.min(...shown.map((r) => r.top)));
+        const bottom = Math.min(area.bottom, Math.max(...shown.map((r) => r.bottom)));
+        const left = Math.min(area.left, ...shown.map((r) => r.left)) - 6 - b.lane * 5;
+        if (bottom > top) parts.push(bracketElement(b, top - origin.top, bottom - top, left - origin.left));
+      }
+      for (const l of labels) {
+        const r = pieces.get(l.at);
+        const end = l.at === data.blocks.length && pieces.get(lastBlock) && lastBlock === data.blocks.length - 1 ? pieces.get(lastBlock)! : null;
+        // A label belongs where its block starts (or below the last block of the document).
+        const top = r && r.top >= area.top - 1 ? r.top : end && end.bottom <= area.bottom + 1 ? end.bottom : null;
+        if (top === null) continue;
+        rows.add(labelElement(l, (action) => this.host.orientation(action)), top - origin.top, beside ? 22 : area.left - origin.left);
+      }
+    }
+    layer.replaceChildren(...parts);
+    s.box.append(layer);
+  }
+
+  /** Redraws the marks (after the setting changed). */
+  refreshMarks(): void {
+    for (const s of this.sheets) if (s.filled) this.drawMarks(s);
   }
 
   private fill(box: HTMLElement): void {
@@ -188,6 +274,8 @@ export class PageView {
     const pxPerMm = parseFloat(s.holder.style.width) / s.geo.width;
     sheet.style.transform = `scale(${pxPerMm / PX_PER_MM})`;
     s.holder.replaceChildren(sheet);
+    // Measured once the sheet is laid out.
+    requestAnimationFrame(() => this.drawMarks(s));
   }
 
   private release(): void {

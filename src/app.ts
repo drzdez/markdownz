@@ -13,7 +13,9 @@ import { dropIndex, indicesToClose, moveItem, type CloseScope } from "./tabops";
 import { showContextMenu, visibleKeys, type MenuItem } from "./ui/contextMenu";
 import { folderIcon } from "./ui/icons";
 import { DEFAULT_PRINT_OPTIONS, type Orientation, type PrintOptions } from "./print/imposition";
-import { pruneExceptions, sameAnchor, type LocalException } from "./print/orientation";
+import { pruneExceptions, sameAnchor, type BlockAnchor, type LocalException } from "./print/orientation";
+import { insertLine, isMarkerLine, moveLine, onlyMarkersChanged, removeLine, replaceLine } from "./print/markerEdit";
+import type { MarkAction } from "./ui/orientationMarks";
 import type { OrientationTarget } from "./formats/types";
 import { pickForward, showHelp, showHistoryTree, showSettings } from "./ui/dialogs";
 import { PageView, pageViewKey, type PageColumns } from "./ui/pageView";
@@ -127,6 +129,8 @@ export class App {
     () => this.active?.scroller?.focus({ preventScroll: true }),
   );
   private pagesTimer?: number;
+  /** Marker edits that Ctrl+Z can undo, newest last. */
+  private markUndo: { path: string; before: string; after: string }[] = [];
   private welcome: HTMLElement | null = null;
   private saveTimer?: number;
   private watched = "";
@@ -611,6 +615,8 @@ export class App {
         onScroll: () => this.scheduleSave(1000),
         pageMenu: (target, x, y) => this.showPageMenu(tab, target, x, y),
         removeOrphans: (orphans) => this.removeExceptions(tab.path, orphans),
+        orientation: (action) => void this.markAction(tab, action),
+        showMarks: () => this.config.orientationMarks !== false,
       });
       tab.frame.append(tab.pages.element);
     }
@@ -691,6 +697,17 @@ export class App {
         },
       );
     }
+    // Markers written into the file, above the block (the same as the marks' buttons do).
+    const add = (value: string) => () => void this.markAction(tab, { type: "insert", before: target.line, text: `<!-- markdownz: ${value} -->` });
+    const above = `Writes a line into the .md file right above ${target.label}`;
+    if (target.line >= 0) {
+      items.push(
+        null,
+        { label: "Add landscape marker above", detail: above, disabled: !target.turnable, action: add("landscape") },
+        { label: "Add portrait marker above", detail: above, disabled: !target.turnable, action: add("portrait") },
+        { label: "Add page break above", detail: above, action: add("page break") },
+      );
+    }
     items.push(
       null,
       { label: "Copy landscape marker", detail: "<!-- markdownz: landscape --> for the .md file; travels with the document", action: copy("landscape") },
@@ -700,10 +717,21 @@ export class App {
     showContextMenu(x, y, items);
   }
 
-  /** Stores (or removes, with null) your orientation exception for a block of a document. */
-  private setException(path: string, target: OrientationTarget, orientation: Orientation | null): void {
+  /** Sets or removes your page break above a block of a document (stored on this computer). */
+  private setPageBreak(path: string, anchor: BlockAnchor, label: string, on: boolean): void {
     const all = { ...this.config.pageExceptions };
-    const items = (all[path]?.items ?? []).filter((e) => !sameAnchor(e.anchor, target.anchor));
+    const items = (all[path]?.items ?? []).filter((e) => !(e.pageBreak && sameAnchor(e.anchor, anchor)));
+    if (on) items.push({ anchor, pageBreak: true, label });
+    if (items.length) all[path] = { used: Date.now(), items };
+    else delete all[path];
+    void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(path));
+    toast(on ? `Page break above ${label} (your exception on this computer).` : `Your page break above ${label} removed.`);
+  }
+
+  /** Stores (or removes, with null) your orientation exception for a block of a document. */
+  private setException(path: string, target: Pick<OrientationTarget, "anchor" | "label" | "marker">, orientation: Orientation | null): void {
+    const all = { ...this.config.pageExceptions };
+    const items = (all[path]?.items ?? []).filter((e) => e.pageBreak || !sameAnchor(e.anchor, target.anchor));
     if (orientation) items.push({ anchor: target.anchor, orientation, label: target.label });
     if (items.length) all[path] = { used: Date.now(), items };
     else delete all[path];
@@ -718,7 +746,7 @@ export class App {
 
   private removeExceptions(path: string, remove: LocalException[]): void {
     const all = { ...this.config.pageExceptions };
-    const gone = (e: LocalException) => remove.some((r) => sameAnchor(r.anchor, e.anchor) && r.orientation === e.orientation);
+    const gone = (e: LocalException) => remove.some((r) => sameAnchor(r.anchor, e.anchor) && r.orientation === e.orientation && !!r.pageBreak === !!e.pageBreak);
     const items = (all[path]?.items ?? []).filter((e) => !gone(e));
     if (items.length) all[path] = { ...all[path], items };
     else delete all[path];
@@ -772,6 +800,12 @@ export class App {
         detail: "Stops for the text width and for wide tables, diagrams, images",
         className: check(this.config.ruler !== false),
         action: () => void this.updateConfig({ ...this.config, ruler: this.config.ruler === false }),
+      },
+      {
+        label: "Show orientation marks",
+        detail: "Where pages turn landscape and why: markers, rules, your exceptions (never printed)",
+        className: check(this.config.orientationMarks !== false),
+        action: () => void this.updateConfig({ ...this.config, orientationMarks: this.config.orientationMarks === false }),
       },
     ]);
   }
@@ -832,7 +866,108 @@ export class App {
         if (tab === this.active && tab.view) this.toc.sync(tab.view);
         this.scheduleSave(1000);
       },
+      orientation: (action: MarkAction) => void this.markAction(tab, action),
+      orientationMenu: (target: OrientationTarget, x: number, y: number) => this.showPageMenu(tab, target, x, y),
     };
+  }
+
+  /**
+   * An action on an orientation mark in the continuous view. Markers live in
+   * the file: only their own line is moved, changed, added or removed, and only
+   * while the file is unchanged since it was shown. Your exceptions live in the
+   * config. Ctrl+Z undoes the last file edit.
+   */
+  private async markAction(tab: Tab, action: MarkAction): Promise<void> {
+    if (action.type === "local") {
+      this.setException(tab.path, { anchor: action.anchor, label: action.label }, action.orientation);
+      return;
+    }
+    if (action.type === "break") {
+      this.setPageBreak(tab.path, action.anchor, action.label, action.on);
+      return;
+    }
+    if (action.type === "move-break") {
+      const all = { ...this.config.pageExceptions };
+      const items = (all[tab.path]?.items ?? []).filter((e) => !(e.pageBreak && (sameAnchor(e.anchor, action.from) || sameAnchor(e.anchor, action.to))));
+      items.push({ anchor: action.to, pageBreak: true, label: action.label });
+      all[tab.path] = { used: Date.now(), items };
+      void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(tab.path));
+      toast(`Your page break moved above ${action.label}.`);
+      return;
+    }
+    if (action.type === "reanchor") {
+      const all = { ...this.config.pageExceptions };
+      const items = (all[tab.path]?.items ?? []).filter((e) => e.pageBreak || (!sameAnchor(e.anchor, action.from) && !sameAnchor(e.anchor, action.to)));
+      items.push({ anchor: action.to, orientation: action.orientation, label: action.label });
+      all[tab.path] = { used: Date.now(), items };
+      void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(tab.path));
+      toast(`Your exception moved to ${action.label}.`);
+      return;
+    }
+    let before: string;
+    try {
+      before = (await backend.readDoc(tab.path)).content;
+    } catch (e) {
+      toast(`Cannot read ${basename(tab.path)}: ${e}`, "warning");
+      return;
+    }
+    const count = before.split(/\r?\n/).length;
+    const at = (line: number) => (line < 0 ? count : line);
+    const lines = before.split(/\r?\n/);
+    const touched = "line" in action ? [action.line] : action.type === "remove-lines" ? action.lines : [];
+    if (touched.some((line) => !isMarkerLine(lines[line] ?? ""))) {
+      toast("The file changed since it was shown; it is reloaded, try again.", "warning");
+      void this.renderTab(tab, "keep");
+      return;
+    }
+    const after =
+      action.type === "move"
+        ? moveLine(before, action.line, at(action.before))
+        : action.type === "remove"
+          ? removeLine(before, action.line)
+          : action.type === "remove-lines"
+            ? // From the bottom up, so the line numbers above stay valid.
+              [...action.lines].sort((a, b) => b - a).reduce((text, line) => removeLine(text, line), before)
+            : action.type === "replace"
+              ? replaceLine(before, action.line, action.text)
+              : insertLine(before, at(action.before), action.text);
+    if (!onlyMarkersChanged(before, after)) {
+      toast("Markdownz only changes marker lines; this edit would change more, so it was not made.", "warning");
+      return;
+    }
+    try {
+      await backend.editDoc(tab.path, before, after);
+    } catch (e) {
+      toast(`Cannot change ${basename(tab.path)}: ${e}. For a read-only file, use your exception instead (right-click a page in the page view).`, "warning");
+      return;
+    }
+    this.markUndo.push({ path: tab.path, before, after });
+    this.markUndo = this.markUndo.slice(-20);
+    const done = { move: "Marker moved", remove: "Marker removed", "remove-lines": "Markers removed", replace: "Marker changed", insert: "Marker added" }[action.type];
+    toast(`${done} in ${basename(tab.path)} — Ctrl+Z to undo.`);
+    // The file watcher reloads the document; do it now as well for a quick update.
+    void this.renderTab(tab, "keep");
+  }
+
+  /** Undoes the last marker edit of the active document (only while the file is as it was left). */
+  private async undoMarkEdit(): Promise<void> {
+    const tab = this.active;
+    const last = this.markUndo.at(-1);
+    if (!tab || !last || !samePath(last.path, tab.path)) return;
+    try {
+      const current = (await backend.readDoc(tab.path)).content;
+      if (current !== last.after) {
+        toast("The file changed since the marker edit; nothing to undo.", "warning");
+        this.markUndo.pop();
+        return;
+      }
+      await backend.editDoc(tab.path, last.after, last.before);
+      this.markUndo.pop();
+      toast("Marker edit undone.");
+      void this.renderTab(tab, "keep");
+    } catch (e) {
+      toast(`Cannot undo: ${e}`, "warning");
+    }
   }
 
   private afterShow(tab: Tab): void {
@@ -1028,7 +1163,11 @@ export class App {
       const before = pageViewKey(this.printOptions());
       this.config = { ...this.config, print: { ...options } };
       void backend.saveState("config", this.config);
-      if (pageViewKey(this.printOptions()) !== before) this.printSettingsChanged();
+      if (pageViewKey(this.printOptions()) !== before) {
+        this.printSettingsChanged();
+        // The orientation marks follow the print settings too.
+        for (const format of FORMATS) format.configure?.(this.config);
+      }
     });
   }
 
@@ -1040,6 +1179,7 @@ export class App {
     await backend.saveState("config", config);
     // Cheap: also applies layout settings (wide objects, ruler) to the open views without re-rendering.
     for (const format of FORMATS) format.configure?.(config);
+    for (const t of this.tabs) t.pages?.refreshMarks();
     if (themeChanged) setTheme(config.theme); // re-renders via the theme listener when needed
     if (settingsChanged) this.rerenderAll();
   }
@@ -1239,6 +1379,7 @@ export class App {
       else if (key === "p") this.print();
       else if (e.code === "Backslash" || key === "\\") this.setPaneCount(this.panes.length > 1 ? 1 : 2);
       else if (key === "r") this.reload();
+      else if (key === "z" && !e.shiftKey) void this.undoMarkEdit();
       else if (key === "[") void this.back();
       else if (key === "]") void this.forward();
       else handled = false;

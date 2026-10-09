@@ -91,9 +91,23 @@ All of them apply to the whole document; single pages can be turned by exception
 
 **Turning single pages.** Exceptions belong to a block of content (a table, a paragraph), never to a page number, because pages move whenever the text or the settings change. Highest priority first:
 
-1. **Your exception** on this computer: right-click a page in the page view → *Landscape page* / *Portrait page* / *Automatic*. Stored in Markdownz's config for the document's full path, so it also works for read-only files. It is tied to the block by the nearest heading and a hash of the block's beginning: edits elsewhere keep it, and when the block itself changes the page view says so and offers to remove it. Exceptions of documents not opened for 180 days are dropped.
+1. **Your exception** on this computer: right-click a block (continuous view) or a page (page view) → *Landscape page* / *Portrait page* / *Automatic*. Stored in Markdownz's config for the document's full path, so it also works for read-only files. It is tied to the block by the nearest heading and a hash of the block's beginning: edits elsewhere keep it, and when the block itself changes the page view says so and offers to remove it. Exceptions of documents not opened for 180 days are dropped.
 2. **A marker in the file**, an HTML comment on a line of its own (invisible on GitHub and in other viewers): `<!-- markdownz: landscape -->` or `<!-- markdownz: portrait -->` for the next block, `<!-- markdownz: landscape start -->` … `<!-- markdownz: landscape end -->` for a range, `<!-- markdownz: page break -->`. The page menu can copy a marker to paste in an editor.
 3. **The print settings** (*Wide tables*). Whatever turns a page, a table still too wide for it shrinks down to the smallest table text and then continues below or is cut off, as set.
+
+**Seeing and moving them.** With *Show orientation marks* (▥ menu, on by default) the continuous view and the page view show where every marker sits in the file (a label) and which blocks it affects (a bracket in the left margin), with the same buttons in both; marks are never printed and never found by Ctrl+F. Right click on a block (continuous view) or on a page (page view) opens the same menu: your exception (landscape / portrait / automatic), *Add landscape / portrait marker / page break above* the block (written into the file), copy a marker, print settings.
+
+| Mark | Colour | Buttons |
+|---|---|---|
+| Marker in the file | blue | ↑ ↓ move it one block, ⟳ landscape → portrait → automatic (removes the marker; a page break above stays), ✂ page break above on/off, ✕ remove the marker (together with its page break) — Markdownz changes only those lines of the file, only while the file is unchanged since it was shown; Ctrl+Z undoes. Range markers (`start`/`end`) swap with ⇄ |
+| Rule (wide content, print settings) | grey with a lock | cannot be moved itself; ⤒ turns one block earlier, ⤓ turns back one block later. This writes a *moved turn* marker such as `<!-- markdownz: landscape start · moves rule of table 13d50105 -->`, which refers to the wide block by a hash of its content and is shown in purple with a double bracket. When that block changes or is no longer wide, the marker is shown as broken or ignored and the rule applies again |
+| Your exception | green | ↑ ↓ attach it to the block above or below, ⇄, ✂ page break above the block on/off (highlighted when on), ✕ |
+| Page start | dotted line with *page N* (continuous view) | where a page starts with the current print settings; when it splits a block, ⤒ writes a page break marker above that block instead |
+| ⟳ on page starts, page breaks and rules | | turns the page the block starts: landscape → portrait → automatic; on grey and blue labels by a marker in the file, on your page break by your exception |
+| Page break marker | blue dashed line | ✂ on any label (marker, rule) writes a page break marker above that block or removes it (the button is highlighted when on); a page break marker standing alone has its own label with ↑ ↓ ✕ |
+| Your page break | green dashed line | switched with ✂ on your exception's label (also for read-only files); a page break left without an exception keeps its own label with ↑ ↓ ✕ |
+
+For read-only files markers cannot be changed; use your exception instead.
 
 A portrait exception keeps the block on a portrait page (wide content shrinks). When every page is landscape (*Orientation: Landscape*, one page per sheet) portrait exceptions are ignored, and the page view says so. The page view shows above the pages what is in effect, including anything overruled or ignored, and every page caption says why the page is turned; the print dialog shows the same summary. PDF pages keep their own orientation.
 

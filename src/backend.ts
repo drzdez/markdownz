@@ -22,6 +22,12 @@ export async function readDoc(path: string): Promise<Doc> {
   return { path, content: await res.text() };
 }
 
+/** Writes `content` to an open document, only if it still contains `expected` (see edit_doc). */
+export async function editDoc(path: string, expected: string, content: string): Promise<void> {
+  if (inTauri) await invoke("edit_doc", { path, expected, content });
+  else throw new Error("editing needs the app");
+}
+
 /** Canonical absolute path of an existing file; rejects when it does not exist. */
 export async function resolvePath(path: string): Promise<string> {
   return inTauri ? invoke<string>("resolve_path", { path }) : path;

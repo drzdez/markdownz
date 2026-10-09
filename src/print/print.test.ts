@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { dominantOrientation, flipEdge, impose, orientSides, parseRange, passes, placePage, preferredOrientation, sheetCount, sheetGeometry, slotSize, type Side } from "./imposition";
-import { groupColumns, paginate, paginateMixed } from "./paginate";
-import { decide, makeAnchor, markersToAnchors, parseMarker, pruneExceptions, resolveMarkers, type MarkerValue } from "./orientation";
+import { dropBlankPages, groupColumns, paginate, paginateMixed } from "./paginate";
+import { decide, makeAnchor, markerComment, markersToAnchors, parseMarker, parseMarkerText, pruneExceptions, resolveMarkers, type MarkerValue } from "./orientation";
+import { insertLine, isMarkerLine, moveLine, onlyMarkersChanged, removeLine, replaceLine } from "./markerEdit";
 
 describe("page ranges", () => {
   it("parses ranges into zero-based indexes", () => {
@@ -136,9 +137,32 @@ describe("mixed pagination", () => {
     expect(pages[1]).toEqual({ start: 1000, end: 1700, landscape: true, cause: 0 });
   });
 
+  it("keeps a page portrait when a page break comes before the wide block", () => {
+    const pages = paginateMixed(rows(0, 2000), 2000, 1000, 700, [{ top: 500, bottom: 900 }], new Set(), [], [400]);
+    expect(pages[0]).toEqual({ start: 0, end: 400, landscape: false });
+    expect(pages[1]).toEqual({ start: 400, end: 1100, landscape: true, cause: 0 });
+  });
+
+  it("does not leave a blank page before a wide block that follows a page break", () => {
+    // Paragraph bottoms at 550, 600; the wide block (after a 16 px margin) and a page break at 616.
+    const pages = paginateMixed([550, 600, 700, 800], 1200, 1000, 700, [{ top: 616, bottom: 1000 }], new Set(), [], [616]);
+    expect(pages.map((p) => [p.start, p.end, p.landscape])).toEqual([[0, 616, false], [616, 1200, true]]);
+  });
+
   it("starts a new page at page breaks", () => {
     const pages = paginateMixed(rows(0, 2000), 2000, 1000, 700, [], new Set(), [], [420]);
     expect(pages.map((p) => [p.start, p.end])).toEqual([[0, 420], [420, 1400], [1400, 2000]]);
+  });
+});
+
+describe("blank pages", () => {
+  it("drops pages that only hold the space between blocks", () => {
+    const pages = [
+      { start: 0, end: 1000 },
+      { start: 1000, end: 1048 },
+      { start: 1048, end: 1700 },
+    ];
+    expect(dropBlankPages(pages, [{ top: 0, bottom: 1000 }, { top: 1048, bottom: 1600 }])).toEqual([pages[0], pages[2]]);
   });
 });
 
@@ -276,5 +300,36 @@ describe("orientation exceptions", () => {
     const doc = (used: number) => ({ used, items: [{ anchor: makeAnchor("p", "", "x"), orientation: "landscape" as const, label: "x" }] });
     const now = 1000 * day;
     expect(Object.keys(pruneExceptions({ a: doc(now - day), b: doc(now - 200 * day), c: { used: now, items: [] } }, now))).toEqual(["a"]);
+  });
+});
+
+describe("moved turns and marker edits", () => {
+  it("parses a marker that moves a rule", () => {
+    expect(parseMarkerText(" landscape start · moves rule of table A1B2C3D4 ")).toEqual({ value: "landscape start", moves: { tag: "table", hash: "a1b2c3d4" } });
+    expect(parseMarkerText("portrait · moves rule of table a1b2c3d4")).toBeNull();
+    expect(markerComment({ value: "landscape end", moves: { tag: "pre", hash: "0badcafe" } })).toBe("<!-- markdownz: landscape end · moves rule of pre 0badcafe -->");
+  });
+
+  it("collects moved turns apart from ordinary markers", () => {
+    const r = resolveMarkers([{ block: true }, { mark: "landscape start", moves: { tag: "table", hash: "a1b2c3d4" } }, { block: true }, { block: true }]);
+    expect(r.orientation).toEqual([undefined, undefined, undefined]);
+    expect(r.shifts).toEqual([{ item: 1, value: "landscape start", moves: { tag: "table", hash: "a1b2c3d4" }, before: 1 }]);
+  });
+
+  const doc = "# A\r\n\r\n<!-- markdownz: landscape -->\r\n| t |\r\n|---|\r\n\r\ntext\r\n";
+
+  it("moves, replaces, inserts and removes only marker lines, keeping line endings", () => {
+    const moved = moveLine(doc, 2, 6);
+    expect(moved).toBe("# A\r\n\r\n| t |\r\n|---|\r\n\r\n<!-- markdownz: landscape -->\r\ntext\r\n");
+    expect(onlyMarkersChanged(doc, moved)).toBe(true);
+    expect(replaceLine(doc, 2, "<!-- markdownz: portrait -->")).toContain("portrait -->\r\n| t |");
+    expect(insertLine(doc, 6, "<!-- markdownz: page break -->").split("\r\n")[6]).toBe("<!-- markdownz: page break -->");
+    expect(removeLine(doc, 2)).toBe("# A\r\n\r\n| t |\r\n|---|\r\n\r\ntext\r\n");
+  });
+
+  it("refuses edits that change anything but marker lines", () => {
+    expect(onlyMarkersChanged(doc, doc.replace("text", "test"))).toBe(false);
+    expect(isMarkerLine("  <!-- markdownz: landscape -->  ")).toBe(true);
+    expect(isMarkerLine("<!-- other -->")).toBe(false);
   });
 });

@@ -20,16 +20,57 @@ export function parseMarker(text: string): MarkerValue | null {
   return MARKERS.has(value) ? (value as MarkerValue) : null;
 }
 
-/** Marker comments in rendered HTML, replaced by invisible anchors that survive sanitizing. */
+/**
+ * A turn that the print settings make (a wide table gets a landscape page),
+ * moved by a marker: "landscape start · moves rule of table a1b2c3d4" turns
+ * already at the marker, "landscape end · …" only after it. The reference
+ * names the block the rule belongs to (element and hash, as in BlockAnchor).
+ */
+export interface RuleRef {
+  tag: string;
+  hash: string;
+}
+
+export interface ParsedMarker {
+  value: MarkerValue;
+  moves?: RuleRef;
+}
+
+const MOVES = /^(.*?)\s*[·|]\s*moves rule of\s+([a-z0-9-]+)\s+([0-9a-f]{8})\s*$/i;
+
+/** Comment text after "markdownz:", including a moved rule; null when unknown. */
+export function parseMarkerText(text: string): ParsedMarker | null {
+  const moved = text.match(MOVES);
+  if (moved) {
+    const value = parseMarker(moved[1]);
+    if (value !== "landscape start" && value !== "landscape end") return null;
+    return { value, moves: { tag: moved[2].toLowerCase(), hash: moved[3].toLowerCase() } };
+  }
+  const value = parseMarker(text);
+  return value ? { value } : null;
+}
+
+/** The comment line for a marker, as written into a file. */
+export function markerComment(marker: ParsedMarker): string {
+  return `<!-- markdownz: ${marker.value}${marker.moves ? ` · moves rule of ${marker.moves.tag} ${marker.moves.hash}` : ""} -->`;
+}
+
+/** An invisible anchor for a marker that survives sanitizing; `line` is its line in the source. */
+export function markerAnchor(marker: ParsedMarker, line?: number): string {
+  const moves = marker.moves ? ` data-moves="${marker.moves.tag} ${marker.moves.hash}"` : "";
+  return `<span class="mdz-mark" data-mdz="${marker.value}"${moves}${line === undefined ? "" : ` data-line="${line}"`}></span>`;
+}
+
+/** Marker comments left in rendered HTML (e.g. inside a paragraph), replaced by anchors. */
 export function markersToAnchors(html: string): string {
   return html.replace(/<!--\s*markdownz\s*:([^>]*?)-->/gi, (comment, text: string) => {
-    const value = parseMarker(text);
-    return value ? `<span class="mdz-mark" data-mdz="${value}"></span>` : comment;
+    const marker = parseMarkerText(text);
+    return marker ? markerAnchor(marker) : comment;
   });
 }
 
 /** One top-level item of a document in reading order: a marker or a block of content. */
-export type Item = { mark: MarkerValue } | { block: true };
+export type Item = { mark: MarkerValue; moves?: RuleRef } | { block: true };
 
 export interface MarkerResult {
   /** Orientation a marker asks for, per block index (undefined = none). */
@@ -38,6 +79,10 @@ export interface MarkerResult {
   breaks: Set<number>;
   /** Markers that apply to nothing (e.g. at the very end, or "end" without "start"). */
   unused: number;
+  /** Indexes (in the items) of those markers. */
+  unusedItems: Set<number>;
+  /** Moved rules, with the index of the block that follows the marker. */
+  shifts: { item: number; value: "landscape start" | "landscape end"; moves: RuleRef; before: number }[];
 }
 
 /**
@@ -48,33 +93,38 @@ export interface MarkerResult {
 export function resolveMarkers(items: Item[]): MarkerResult {
   const orientation: (Orientation | undefined)[] = [];
   const breaks = new Set<number>();
-  let next: Orientation | undefined;
-  let range: Orientation | undefined;
-  let pendingBreak = false;
-  let unused = 0;
-  for (const item of items) {
+  let next: { orientation: Orientation; item: number } | undefined;
+  let range: { orientation: Orientation; item: number } | undefined;
+  let pendingBreak: number | undefined;
+  const unusedItems = new Set<number>();
+  const shifts: MarkerResult["shifts"] = [];
+  items.forEach((item, i) => {
     if ("block" in item) {
       const index = orientation.length;
-      orientation.push(next ?? range);
-      if (pendingBreak) breaks.add(index);
+      orientation.push(next?.orientation ?? range?.orientation);
+      if (pendingBreak !== undefined) breaks.add(index);
       next = undefined;
-      pendingBreak = false;
-      continue;
+      pendingBreak = undefined;
+      return;
+    }
+    if (item.moves) {
+      shifts.push({ item: i, value: item.mark as "landscape start" | "landscape end", moves: item.moves, before: orientation.length });
+      return;
     }
     const [value, edge] = item.mark.split(" ") as [string, string | undefined];
-    if (item.mark === "page break") pendingBreak = true;
-    else if (edge === "start") range = value as Orientation;
+    if (item.mark === "page break") pendingBreak = i;
+    else if (edge === "start") range = { orientation: value as Orientation, item: i };
     else if (edge === "end") {
-      if (range === value) range = undefined;
-      else unused++;
+      if (range?.orientation === value) range = undefined;
+      else unusedItems.add(i);
     } else {
-      if (next) unused++;
-      next = value as Orientation;
+      if (next) unusedItems.add(next.item);
+      next = { orientation: value as Orientation, item: i };
     }
-  }
-  if (next) unused++;
-  if (pendingBreak) unused++;
-  return { orientation, breaks, unused };
+  });
+  if (next) unusedItems.add(next.item);
+  if (pendingBreak !== undefined) unusedItems.add(pendingBreak);
+  return { orientation, breaks, unused: unusedItems.size, unusedItems, shifts };
 }
 
 /** Identifies a block of content across edits elsewhere in the document. */
@@ -112,7 +162,10 @@ export function sameAnchor(a: BlockAnchor, b: BlockAnchor): boolean {
 /** Your exception for a block, kept in the app config. */
 export interface LocalException {
   anchor: BlockAnchor;
-  orientation: Orientation;
+  /** Orientation of the pages showing the block. */
+  orientation?: Orientation;
+  /** Instead of an orientation: a new page starts right above the block. */
+  pageBreak?: boolean;
   /** Short description for menus, e.g. "table “Product | PG in master …”". */
   label: string;
 }

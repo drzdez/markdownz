@@ -52,6 +52,30 @@ fn read_doc(path: String) -> Result<Doc, String> {
     })
 }
 
+/// Writes a new version of an open document, but only while the file still has
+/// the content the app read (`expected`): changes made meanwhile in an editor are
+/// never overwritten. Used to move orientation markers; the frontend makes sure
+/// that only marker lines differ. A byte order mark is kept.
+#[tauri::command]
+fn edit_doc(path: String, expected: String, content: String, state: State<'_, DocWatcher>) -> Result<(), String> {
+    let canonical = dunce::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
+    if !state.files.lock().unwrap().iter().any(|f| *f == path_key(&canonical)) {
+        return Err(format!("{path}: not an open document"));
+    }
+    let bytes = std::fs::read(&canonical).map_err(|e| format!("{path}: {e}"))?;
+    let bom = bytes.starts_with(b"\xEF\xBB\xBF");
+    let current = std::str::from_utf8(if bom { &bytes[3..] } else { &bytes }).map_err(|_| format!("{path}: not UTF-8 text"))?;
+    if current != expected {
+        return Err("the file was changed meanwhile; it is reloaded, try again".into());
+    }
+    let mut out = Vec::with_capacity(content.len() + 3);
+    if bom {
+        out.extend_from_slice(b"\xEF\xBB\xBF");
+    }
+    out.extend_from_slice(content.as_bytes());
+    std::fs::write(&canonical, out).map_err(|e| format!("{path}: {e}"))
+}
+
 /// Canonical path of an existing file.
 #[tauri::command]
 fn resolve_path(path: String) -> Result<String, String> {
@@ -305,6 +329,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             read_doc,
+            edit_doc,
             resolve_path,
             read_binary,
             open_with,

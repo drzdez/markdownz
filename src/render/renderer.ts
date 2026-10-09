@@ -1,7 +1,7 @@
 import markdownIt, { type MarkdownIt } from "markdown-it";
 import anchor from "markdown-it-anchor";
 import DOMPurify from "dompurify";
-import { markersToAnchors } from "../print/orientation";
+import { markerAnchor, markersToAnchors, parseMarkerText } from "../print/orientation";
 import { fileSrc } from "../backend";
 import { dirname, resolvePath } from "../paths";
 import {
@@ -62,6 +62,15 @@ export class Renderer {
       plugin.setup?.(md);
       for (const [lang, render] of Object.entries(plugin.fences ?? {})) fences.set(lang, render);
     }
+    md.core.ruler.after("block", "mdz_source_lines", sourceLines);
+    const defaultHtmlBlock = md.renderer.rules.html_block!;
+    md.renderer.rules.html_block = (tokens, idx, options, env, self) => {
+      // An orientation marker on a line of its own becomes an anchor that knows its line.
+      const token = tokens[idx];
+      const text = token.content.trim().match(/^<!--\s*markdownz\s*:([^>]*?)-->$/i)?.[1];
+      const marker = text === undefined ? null : parseMarkerText(text);
+      return marker ? markerAnchor(marker, token.map?.[0]) + "\n" : defaultHtmlBlock(tokens, idx, options, env, self);
+    };
     const defaultFence = md.renderer.rules.fence!;
     md.renderer.rules.fence = (tokens, idx, options, env, self) => {
       const token = tokens[idx];
@@ -93,6 +102,27 @@ export class Renderer {
     }
     return article;
   }
+}
+
+/**
+ * Puts an invisible anchor with the source lines before every top-level block,
+ * so orientation markers can be moved between blocks by editing just their line.
+ */
+type CoreState = Parameters<Parameters<MarkdownIt["core"]["ruler"]["after"]>[2]>[0];
+
+function sourceLines(state: CoreState): void {
+  const out: CoreState["tokens"] = [];
+  for (const token of state.tokens) {
+    const opens = token.level === 0 && token.nesting >= 0 && token.map;
+    const marker = token.type === "html_block" && /^\s*<!--\s*markdownz\s*:/i.test(token.content);
+    if (opens && !marker) {
+      const anchor = new state.Token("html_block", "", 0);
+      anchor.content = `<span class="mdz-src" data-line="${token.map![0]}" data-end="${token.map![1]}"></span>\n`;
+      out.push(anchor);
+    }
+    out.push(token);
+  }
+  state.tokens.splice(0, state.tokens.length, ...out);
 }
 
 export function sanitize(html: string): string {
