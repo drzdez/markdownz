@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.3" date="2026-10-12">
+      <description>
+        <p>Code, tables and math on screen keep within the object width and shrink before they wrap or scroll. Removed marks can be brought back for a few seconds. New documents open at a zoom set in Settings (separately for the continuous and the page view), and one toolbar button switches between the two views.</p>
+      </description>
+    </release>
     <release version="0.4.2" date="2026-10-10">
       <description>
         <p>Orientation marks in the continuous and page view show where pages turn landscape, start or break and why; markers in the file can be moved, turned and removed with one click, rule turns can be moved, and page breaks can be your own exceptions. No more blank pages in print.</p>
