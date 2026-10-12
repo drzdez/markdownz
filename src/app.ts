@@ -337,6 +337,8 @@ export class App {
         ? { label: "Remove from side by side", action: () => this.closePane(tab) }
         : { label: "Show side by side", disabled: shown || this.panes.length >= MAX_PANES, action: () => void this.showSideBySide(tab) },
       null,
+      { label: "Copy document path", action: () => this.copyPath(tab.path) },
+      null,
       { label: "Close", hint: "Ctrl+W", action: () => this.closeTabs(tab, "this") },
       { label: "Close others", disabled: !last, action: () => this.closeTabs(tab, "others") },
       { label: "Close tabs to the right", disabled: index === last, action: () => this.closeTabs(tab, "right") },
@@ -346,12 +348,19 @@ export class App {
       { label: "Reopen closed tab", hint: "Ctrl+Shift+T", disabled: !this.session.closed.length, action: () => this.reopenClosed() },
       null,
       { label: "Print…", hint: "Ctrl+P", disabled: tab !== this.active || !tab.view?.printPages, action: () => this.print() },
-      ...this.openWithItems(tab.path),
+      ...this.openWithItems(tab.path, false),
     ]);
   }
 
+  private copyPath(path: string): void {
+    navigator.clipboard.writeText(path).then(
+      () => toast(`Copied: ${path}`),
+      (e) => toast(`Cannot copy the path: ${e}`),
+    );
+  }
+
   /** "Open with" entries for editors and advanced tools; Markdownz itself stays a viewer. */
-  private openWithItems(path: string): MenuItem[] {
+  private openWithItems(path: string, copy = true): MenuItem[] {
     const ext = extname(path);
     const run = (action: () => Promise<void>) => () => void action().catch((e) => toast(`Cannot open: ${e}`));
     const apps = this.config.openWith.filter((a) => !a.extensions?.length || a.extensions.includes(ext));
@@ -367,7 +376,7 @@ export class App {
         }),
       },
       { label: "Show in folder", action: run(() => backend.revealFile(path)) },
-      { label: "Copy path", action: run(() => navigator.clipboard.writeText(path)) },
+      ...(copy ? [{ label: "Copy document path", action: () => this.copyPath(path) }] : []),
     ];
   }
 
