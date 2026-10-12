@@ -136,6 +136,23 @@ export function showSettings(config: Config, onChange: (config: Config) => void,
       }),
     );
   }
+  // Zoom a newly opened document starts with; the % button and Ctrl+0 go back to it.
+  const zoomInput = (value: number | undefined, change: (zoom: number) => void) => {
+    const input = el("input", { type: "number", min: "30", max: "400", step: "5", value: String(Math.round((value ?? 1) * 100)) });
+    input.addEventListener("change", () => {
+      const percent = Number(input.value);
+      if (percent >= 30 && percent <= 400) change(percent / 100);
+    });
+    return input;
+  };
+  const zoomGroup = el(
+    "fieldset",
+    {},
+    el("legend", { textContent: "Zoom of a newly opened document" }),
+    el("label", { className: "mdz-field" }, el("span", { textContent: "Continuous view %" }), zoomInput(config.zoomContinuous, (z) => onChange((config = { ...config, zoomContinuous: z })))),
+    el("label", { className: "mdz-field" }, el("span", { textContent: "Pages as printed %" }), zoomInput(config.zoomPages, (z) => onChange((config = { ...config, zoomPages: z })))),
+    el("p", { className: "mdz-hint", textContent: "Click on the % in the toolbar to return to it, double click for 100 %." }),
+  );
   const daily = el("input", { type: "checkbox", checked: config.checkUpdates });
   daily.dataset.nav = "";
   daily.addEventListener("change", () => {
@@ -150,7 +167,7 @@ export function showSettings(config: Config, onChange: (config: Config) => void,
     el("label", {}, daily, " Check for a new version once a day"),
     now,
   );
-  const layer = openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, formatGroup, pluginGroup, updateGroup));
+  const layer = openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, zoomGroup, formatGroup, pluginGroup, updateGroup));
   now.addEventListener("click", () => {
     layer.close();
     checkNow();
@@ -172,13 +189,15 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl+click link", "Open linked document in a new tab"],
   ["Ctrl+F · F3 · Shift+F3", "Find · next · previous"],
   ["Ctrl+B", "Toggle table of contents"],
-  ["Ctrl+wheel · Ctrl+ + / − / 0", "Zoom this document in / out / 100 % (also the % button)"],
+  ["Ctrl+wheel · Ctrl+ + / −", "Zoom this document in / out"],
+  ["Ctrl+0", "Zoom 100 %; at 100 % already, the preset zoom from Settings"],
+  ["Click / double click the % button", "Preset zoom from Settings / 100 %"],
   ["F5 · Ctrl+R", "Reload document"],
   ["Ctrl+Shift+O", "Open with another application (editor, …)"],
   ["Ctrl+P", "Print: pages per sheet, booklet, two-sided"],
   ["Ctrl+\\ · right click on tab", "Documents side by side (▥ menu: 2, 3, 4)"],
   ["Ctrl+Alt+← / →", "Previous / next document side by side"],
-  ["Ctrl+Shift+P", "Pages as printed / continuous (sheets per row in the ▥ menu)"],
+  ["Ctrl+Shift+P · ▤ button", "Pages as printed / continuous (sheets per row in the ▥ menu)"],
   ["Right click on a block or page", "Turn it landscape / portrait, add or copy a marker"],
   ["Ctrl+Z", "Undo the last marker edit (orientation marks)"],
   ["Ctrl+,", "Settings and plugins"],

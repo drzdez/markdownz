@@ -36,6 +36,9 @@ export interface Config {
   widths?: { text: number; objects: number };
   /** Last used print settings. */
   print?: PrintOptions;
+  /** Zoom a newly opened document starts with, continuous view and page view (1 = 100 %). */
+  zoomContinuous?: number;
+  zoomPages?: number;
   /** Check for a new version once a day at start. */
   checkUpdates: boolean;
   /** Time of the last update check (ms since epoch). */
@@ -62,8 +65,10 @@ export interface Session {
   pageTabs: number[];
   /** Sheets per row in page view; 0 = as many as fit. */
   pageColumns: number;
-  /** Zoom of each tab (same order as `tabs`); new documents start at 100 %. */
+  /** Zoom of each tab (same order as `tabs`), continuous view; new documents start at the preset. */
   zooms?: number[];
+  /** The same for the page view. */
+  pageZooms?: number[];
 }
 
 export const DEFAULT_CONFIG: Config = { theme: "auto", plugins: {}, formats: {}, openWith: [], checkUpdates: true };

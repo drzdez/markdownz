@@ -1,6 +1,6 @@
 import * as backend from "../backend";
 import { DEFAULT_PRINT_OPTIONS, pageSetup, type PageLayoutOptions, type PrintOptions } from "../print/imposition";
-import { blockTarget, OrientationMarks } from "../ui/orientationMarks";
+import { blockTarget, onGhostChange, OrientationMarks } from "../ui/orientationMarks";
 import { dropBlankPages, measureBreaks, paginateMixed, type TableHeader } from "../print/paginate";
 import { ensurePaperStyle, waitForImages } from "../print/printJob";
 import { Renderer, slugify } from "../render/renderer";
@@ -72,6 +72,7 @@ class MarkdownView implements DocumentView {
   private zoom = 1;
   private fitFrame = 0;
   private marks: OrientationMarks;
+  private stopGhost: () => void;
   /** The marks need computing again (document, settings or exceptions changed). */
   private marksStale = true;
   private marksToken = 0;
@@ -120,6 +121,7 @@ class MarkdownView implements DocumentView {
       host.orientationMenu(target, e.clientX, e.clientY);
     });
     this.element.append(this.ruler.element, this.marks.element);
+    this.stopGhost = onGhostChange(() => this.marks.layout());
     // The view (window, panes, table of contents) or the article (images loading) changed size.
     this.resizeObserver = new ResizeObserver(() => {
       cancelAnimationFrame(this.fitFrame);
@@ -134,7 +136,11 @@ class MarkdownView implements DocumentView {
     this.element.style.setProperty("--text-width", `${layout.widths.text}px`);
     this.ruler.element.hidden = !layout.ruler;
     if (!this.article) return;
-    fitWideObjects(this.article, this.element, this.zoom, layout.wideObjects ? layout.widths : null);
+    // Code and math too wide follow the print settings: smaller text, then wrapped or cut (scrolled).
+    fitWideObjects(this.article, this.element, this.zoom, layout.wideObjects ? layout.widths : null, {
+      minFontPx: (marksSettings.print.minFontPt * 96) / 72,
+      split: marksSettings.print.overflow === "split",
+    });
     if (layout.ruler) this.ruler.update();
     // Hidden tabs wait until they are shown (the resize observer calls this again).
     if (this.marksStale && this.element.offsetParent) void this.computeMarks();
@@ -299,6 +305,7 @@ class MarkdownView implements DocumentView {
     this.find.clear();
     this.resizeObserver.disconnect();
     views.delete(this);
+    this.stopGhost();
     cancelAnimationFrame(this.fitFrame);
     this.element.remove();
   }

@@ -578,6 +578,22 @@ button {
 }
 
 /* A setting shown by the button is on (e.g. your page break above the block). */
+/* A label just removed: visible for a second, then fading; ↺ brings it back. */
+.mdz-orient-label.ghost {
+  border-style: dashed;
+  animation: mdz-ghost 4s linear forwards;
+}
+
+@keyframes mdz-ghost {
+  0%,
+  25% {
+    opacity: 0.85;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .mdz-orient-label button.on {
   box-shadow: inset 0 0 0 1px currentColor;
   font-weight: 700;

@@ -6,11 +6,22 @@
 
 import type { BlockInfo, MarkInfo, OrientationTarget, PageStart } from "../formats/types";
 import type { Orientation } from "../print/imposition";
-import type { BlockAnchor } from "../print/orientation";
+import { sameAnchor, type BlockAnchor } from "../print/orientation";
 import { el } from "./overlay";
 
+/** A label that disappears by a click stays a moment as a ghost that can bring it back. */
+export interface GhostInfo {
+  anchor: BlockAnchor;
+  text: string;
+  kind: string;
+  /** Brings the removed item back. */
+  restore: MarkAction;
+}
+
 /** What the user asked for on a mark; carried out by the app (file edits, your exceptions). */
-export type MarkAction =
+export type MarkAction = (
+  /** Undoes the last marker edit of the file (bringing a removed marker back). */
+  | { type: "undo" }
   /** Lines are 0-based lines of the file; `before` -1 means at the end. */
   | { type: "move"; line: number; before: number }
   | { type: "remove"; line: number }
@@ -22,7 +33,33 @@ export type MarkAction =
   | { type: "reanchor"; from: BlockAnchor; to: BlockAnchor; label: string; orientation: Orientation }
   /** Your page break above a block: set or removed, or moved to another block. */
   | { type: "break"; anchor: BlockAnchor; label: string; on: boolean }
-  | { type: "move-break"; from: BlockAnchor; to: BlockAnchor; label: string };
+  | { type: "move-break"; from: BlockAnchor; to: BlockAnchor; label: string }
+) & {
+  /** Set on actions that remove a label: it then stays a moment as a ghost (see setGhost). */
+  ghost?: GhostInfo;
+};
+
+/** How long a ghost stays, ms (it starts fading after a second). */
+export const GHOST_MS = 4000;
+
+let ghost: (GhostInfo & { until: number }) | null = null;
+const ghostListeners = new Set<() => void>();
+
+/** Shows (or clears) the ghost of a removed label; the views draw it where its block is. */
+export function setGhost(info: GhostInfo | null): void {
+  const current = info ? { ...info, until: Date.now() + GHOST_MS } : null;
+  ghost = current;
+  for (const listener of ghostListeners) listener();
+  if (current)
+    window.setTimeout(() => {
+      if (ghost === current) setGhost(null);
+    }, GHOST_MS);
+}
+
+export function onGhostChange(listener: () => void): () => void {
+  ghostListeners.add(listener);
+  return () => ghostListeners.delete(listener);
+}
 
 export interface MarksData {
   blocks: BlockInfo[];
@@ -74,7 +111,12 @@ function fileTurnButton(data: MarksData, block: number, now?: Orientation): Butt
   const to = current === "landscape" ? "portrait" : "landscape";
   if (!m) return ["⟳", `Turn this page ${to} (writes a ${to} marker above ${b.label})`, { type: "insert", before: b.line, text: `<!-- markdownz: ${to} -->` }];
   if (m.value === "landscape") return ["⟳", "Landscape (marker in the file); click for portrait", { type: "replace", line: m.line, text: "<!-- markdownz: portrait -->" }, true];
-  return ["⟳", "Portrait (marker in the file); click to remove the marker (automatic)", { type: "remove", line: m.line }, true];
+  return [
+    "⟳",
+    "Portrait (marker in the file); click to remove the marker (automatic)",
+    { type: "remove", line: m.line, ghost: { anchor: b.anchor, text: "⟳ portrait", kind: "marker", restore: { type: "undo" } } },
+    true,
+  ];
 }
 
 /** ⟳ on your page break: the same cycle with your exception (this computer only). */
@@ -83,7 +125,8 @@ function yourTurnButton(data: MarksData, block: number): Button {
   if (!b || !data.turnable) return ["⟳", data.turnable ? "" : "Every page is landscape (print settings)", null];
   const next: Orientation | null = !b.local ? "landscape" : b.local === "landscape" ? "portrait" : null;
   const title = !b.local ? "Turn this page landscape (your exception)" : b.local === "landscape" ? "Landscape (your exception); click for portrait" : "Portrait (your exception); click for automatic";
-  return ["⟳", title, { type: "local", anchor: b.anchor, label: b.label, orientation: next }, !!b.local];
+  const ghost = next === null && b.local ? { anchor: b.anchor, text: `⟳ ${b.local} · your exception`, kind: "yours", restore: { type: "local", anchor: b.anchor, label: b.label, orientation: b.local } as MarkAction } : undefined;
+  return ["⟳", title, { type: "local", anchor: b.anchor, label: b.label, orientation: next, ghost }, !!b.local];
 }
 
 /**
@@ -131,6 +174,8 @@ export interface LabelSpec {
   kind: string;
   text: string;
   title: string;
+  /** How far its fading has already gone, ms (a redrawn ghost goes on fading where it was). */
+  elapsed?: number;
   /** Symbol, tooltip, action (null = disabled) and whether the button shows a setting that is on. */
   buttons: Button[];
 }
@@ -199,9 +244,11 @@ export function markSpecs(data: MarksData): { brackets: BracketSpec[]; labels: L
         ...(m.value === "page break" ? [fileTurnButton(data, m.before)] : [breakButton(m.before, m.line)]),
         (() => {
           const pageBreak = m.value !== "page break" ? breakAbove(m.before) : undefined;
+          const block = data.blocks[m.before] ?? data.blocks[data.blocks.length - 1];
+          const ghost = block && { anchor: block.anchor, text: `${m.value === "page break" ? "✂" : "⟳"} ${m.value}${pageBreak ? " · page break" : ""}`, kind: m.moves ? "moved" : "marker", restore: { type: "undo" } as MarkAction };
           return pageBreak
-            ? (["✕", `Remove both: the ${m.value} marker and the page break`, { type: "remove-lines", lines: [m.line, pageBreak.line] }] as Button)
-            : (["✕", "Remove the marker from the file", { type: "remove", line: m.line }] as Button);
+            ? (["✕", `Remove both: the ${m.value} marker and the page break`, { type: "remove-lines", lines: [m.line, pageBreak.line], ghost }] as Button)
+            : (["✕", "Remove the marker from the file", { type: "remove", line: m.line, ghost }] as Button);
         })(),
       ],
     });
@@ -260,7 +307,7 @@ export function markSpecs(data: MarksData): { brackets: BracketSpec[]; labels: L
         ["↑", "Move it one block up", to(i - 1)],
         ["↓", "Move it one block down", to(i + 1)],
         yourTurnButton(data, i),
-        ["✕", "Remove your page break", { type: "break", anchor: b.anchor, label: b.label, on: false }],
+        ["✕", "Remove your page break", { type: "break", anchor: b.anchor, label: b.label, on: false, ghost: { anchor: b.anchor, text: "✂ page break · your exception", kind: "yours", restore: { type: "break", anchor: b.anchor, label: b.label, on: true } } }],
       ],
     });
   });
@@ -278,17 +325,34 @@ export function markSpecs(data: MarksData): { brackets: BracketSpec[]; labels: L
       buttons: [
         ["↑", "Attach it to the block above", to(i - 1)],
         ["↓", "Attach it to the block below", to(i + 1)],
-        ["⇄", `Change to ${swap(b.local)}`, { type: "local", anchor: b.anchor, label: b.label, orientation: swap(b.local) }],
+        yourTurnButton(data, i),
         [
           "✂︎",
           b.localBreak ? "Page break above this block: on (click to turn off)" : "Start a new page above this block",
           { type: "break", anchor: b.anchor, label: b.label, on: !b.localBreak },
           b.localBreak,
         ],
-        ["✕", "Remove your exception", { type: "local", anchor: b.anchor, label: b.label, orientation: null }],
+        [
+          "✕",
+          "Remove your exception",
+          { type: "local", anchor: b.anchor, label: b.label, orientation: null, ghost: { anchor: b.anchor, text: `⟳ ${b.local} · your exception`, kind: "yours", restore: { type: "local", anchor: b.anchor, label: b.label, orientation: b.local } } },
+        ],
       ],
     });
   });
+  // The ghost of a label just removed by a click: one more click brings it back.
+  const g = ghost && ghost.until > Date.now() ? ghost : null;
+  const at = g ? data.blocks.findIndex((b) => sameAnchor(b.anchor, g.anchor)) : -1;
+  if (g && at >= 0) {
+    labels.push({
+      at,
+      kind: `${g.kind} ghost`,
+      text: `${g.text} · removed`,
+      title: "Removed just now; click ↺ to bring it back",
+      elapsed: GHOST_MS - (g.until - Date.now()),
+      buttons: [["↺", "Bring it back", { ...g.restore, ghost: undefined }]],
+    });
+  }
   return { brackets, labels };
 }
 
@@ -300,6 +364,7 @@ export function bracketElement(spec: BracketSpec, top: number, height: number, l
 
 export function labelElement(spec: LabelSpec, act: (action: MarkAction) => void): HTMLElement {
   const tag = el("div", { className: `mdz-orient-label ${spec.kind}`, title: spec.title }, el("span", { textContent: spec.text }));
+  if (spec.elapsed) tag.style.animationDelay = `${-spec.elapsed}ms`;
   for (const [symbol, hint, action, on] of spec.buttons) {
     const button = el("button", { textContent: symbol, title: hint, disabled: !action, className: on ? "on" : "" });
     if (action) button.addEventListener("click", () => act(action));

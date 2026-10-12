@@ -23,9 +23,9 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 | Plugins | GitHub alerts (`> [!NOTE]`), footnotes, emoji shortcodes, front matter table, syntax highlighting, KaTeX math (`$…$`, `$$…$$`, fenced ```` ```math ````), Mermaid, Graphviz (```` ```dot ````) |
 | PDF | [pdf.js](https://mozilla.github.io/pdf.js/): pages rendered on demand, text selection, internal and external links, outline in the table of contents, find, zoom that re-renders sharply, `#page=N` links from Markdown, printing |
 | Navigation | Relative links to other `.md` and `.pdf` files open in the same tab; <kbd>Ctrl</kbd>+click or middle click opens a new tab; `#anchors` work across files |
-| Viewing | Zoom per document (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>/<kbd>0</kbd>; the % button in the toolbar shows it and resets it to 100 % with one click; every newly opened document starts at 100 %, restored tabs keep theirs), table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
+| Viewing | Zoom per document, separately for the continuous view and the page view (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>); a newly opened document starts at the zoom set in Settings (one value for each view), restored tabs keep theirs; the % button shows the zoom: a click returns to the preset, a double click to 100 %; <kbd>Ctrl</kbd>+<kbd>0</kbd> gives 100 %, and at 100 % the preset, table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
 | Side by side | The ▥ menu shows 2, 3 or 4 documents next to each other (up to 6 via right click on a tab → *Show side by side*); <kbd>Ctrl</kbd>+<kbd>\</kbd> toggles two. Each pane has its own document, scroll position and history; the clicked pane is the active one (toolbar, find, table of contents). Drag the divider to resize, double-click it for equal widths. Panes and widths are restored on the next start |
-| Wide content | Text stays in a readable column. Tables, code blocks, math, diagrams and images that do not fit get just as much room as they need so they do not have to scroll, centred in the window. The **width ruler** above Markdown documents has two rows of stops: the upper one sets the text width, the lower one how wide objects may grow (drag to the window edge for "as wide as the window"); double-click a stop to reset. Both can be switched off in Settings (ruler also in the ▥ menu). Printing has its own rules, see [Printing](#printing) |
+| Wide content | Text stays in a readable column. Tables, code blocks, math, diagrams and images that do not fit get more room, centred in the window, up to the object stop of the width ruler — like on paper: tables unwrap up to it, then everything too wide shrinks down to *Smallest table text* (print settings), then code wraps or scrolls sideways (*Still too wide*); tables and math scroll; diagrams and images scale. The **width ruler** above Markdown documents has two rows of stops: the upper one sets the text width, the lower one how wide objects may grow (drag to the window edge for "as wide as the window"); double-click a stop to reset. Both can be switched off in Settings (ruler also in the ▥ menu). Printing has its own rules, see [Printing](#printing) |
 | Page view | *Pages as printed* (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> or the ▥ menu) shows the document laid out with the current print settings (paper, pages per sheet, booklet, orientation, margins, scale, frames) instead of continuous text; 1–4 sheets per row or as many as fit, zoom works as usual, changes in the print dialog apply at once. Find and the outline work in the continuous view |
 | Printing | Own print dialog with preview (<kbd>Ctrl</kbd>+<kbd>P</kbd> or ⎙): 1/2/4 pages per sheet, orientation by page or fixed, scale, alignment, margins, page frames, booklet (pages reordered for folding), two-sided via the printer or manually in two passes, page ranges, A4/Letter; paper is always light, Markdown is paginated between blocks |
 | Recent documents | Listed on the start page and in the **+** menu with the time they were last viewed; up to 100 entries, scrollable; when a clicked document no longer exists, Markdownz says so and checks only the entries visible in that list at the moment and shows missing ones as *deleted* (struck through); they stay in the list and open again if the file comes back. The folder icon next to each entry shows the file in Explorer / the default file manager |
@@ -52,13 +52,14 @@ On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Press <kbd>F1</kbd> in t
 | <kbd>Ctrl</kbd>+<kbd>H</kbd> | History tree of the current tab |
 | <kbd>Ctrl</kbd>+<kbd>F</kbd>, <kbd>F3</kbd>, <kbd>Shift</kbd>+<kbd>F3</kbd> | Find, next, previous |
 | <kbd>Ctrl</kbd>+<kbd>B</kbd> | Toggle table of contents |
-| <kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd> / <kbd>0</kbd> | Zoom |
+| <kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd> / <kbd>-</kbd> | Zoom |
+| <kbd>Ctrl</kbd>+<kbd>0</kbd> | Zoom 100 %; at 100 % already, the preset zoom from Settings |
 | <kbd>F5</kbd>, <kbd>Ctrl</kbd>+<kbd>R</kbd> | Reload |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd> | Open with another application |
 | <kbd>Ctrl</kbd>+<kbd>P</kbd> | Print (pages per sheet, booklet, two-sided, range) |
 | <kbd>Ctrl</kbd>+<kbd>\</kbd>, right click on a tab | Documents side by side (more in the ▥ menu) |
 | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>←</kbd> / <kbd>→</kbd> | Previous / next document side by side |
-| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Pages as printed / continuous view |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd>, the ▤ button | Pages as printed / continuous view |
 | <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings (theme, formats, Markdown extensions) |
 
 ## Printing
@@ -101,13 +102,13 @@ All of them apply to the whole document; single pages can be turned by exception
 |---|---|---|
 | Marker in the file | blue | ↑ ↓ move it one block, ⟳ landscape → portrait → automatic (removes the marker; a page break above stays), ✂ page break above on/off, ✕ remove the marker (together with its page break) — Markdownz changes only those lines of the file, only while the file is unchanged since it was shown; Ctrl+Z undoes. Range markers (`start`/`end`) swap with ⇄ |
 | Rule (wide content, print settings) | grey with a lock | cannot be moved itself; ⤒ turns one block earlier, ⤓ turns back one block later. This writes a *moved turn* marker such as `<!-- markdownz: landscape start · moves rule of table 13d50105 -->`, which refers to the wide block by a hash of its content and is shown in purple with a double bracket. When that block changes or is no longer wide, the marker is shown as broken or ignored and the rule applies again |
-| Your exception | green | ↑ ↓ attach it to the block above or below, ⇄, ✂ page break above the block on/off (highlighted when on), ✕ |
+| Your exception | green | ↑ ↓ attach it to the block above or below, ⟳ landscape → portrait → automatic, ✂ page break above the block on/off (highlighted when on), ✕ |
 | Page start | dotted line with *page N* (continuous view) | where a page starts with the current print settings; when it splits a block, ⤒ writes a page break marker above that block instead |
 | ⟳ on page starts, page breaks and rules | | turns the page the block starts: landscape → portrait → automatic; on grey and blue labels by a marker in the file, on your page break by your exception |
 | Page break marker | blue dashed line | ✂ on any label (marker, rule) writes a page break marker above that block or removes it (the button is highlighted when on); a page break marker standing alone has its own label with ↑ ↓ ✕ |
 | Your page break | green dashed line | switched with ✂ on your exception's label (also for read-only files); a page break left without an exception keeps its own label with ↑ ↓ ✕ |
 
-For read-only files markers cannot be changed; use your exception instead.
+A label removed by a click (✕, or ⟳ back to automatic) stays a few seconds, fading, with ↺ to bring it back. For read-only files markers cannot be changed; use your exception instead.
 
 A portrait exception keeps the block on a portrait page (wide content shrinks). When every page is landscape (*Orientation: Landscape*, one page per sheet) portrait exceptions are ignored, and the page view says so. The page view shows above the pages what is in effect, including anything overruled or ignored, and every page caption says why the page is turned; the print dialog shows the same summary. PDF pages keep their own orientation.
 

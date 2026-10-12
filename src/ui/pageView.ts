@@ -4,7 +4,7 @@
 
 import type { DocumentView, OrientationTarget, PrintPages } from "../formats/types";
 import type { LocalException } from "../print/orientation";
-import { bracketElement, hasMarks, labelElement, LabelRows, markSpecs, pageTag, type MarkAction } from "./orientationMarks";
+import { bracketElement, hasMarks, labelElement, LabelRows, markSpecs, onGhostChange, pageTag, type MarkAction } from "./orientationMarks";
 import { impose, orientSides, pageSetup, sheetGeometry, type PrintOptions, type SheetGeometry, type Side } from "../print/imposition";
 import { buildSheet } from "../print/printJob";
 import { el } from "./overlay";
@@ -59,6 +59,8 @@ export class PageView {
   private observer: IntersectionObserver;
   /** Key of the options and document the sheets were built for. */
   key = "";
+
+  private stopGhost = onGhostChange(() => this.refreshMarks());
 
   constructor(private host: PageViewHost) {
     this.element.append(this.info, this.status, this.grid);
@@ -286,6 +288,7 @@ export class PageView {
   }
 
   dispose(): void {
+    this.stopGhost();
     this.token++;
     this.release();
     this.element.remove();

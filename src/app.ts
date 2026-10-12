@@ -15,7 +15,7 @@ import { folderIcon } from "./ui/icons";
 import { DEFAULT_PRINT_OPTIONS, type Orientation, type PrintOptions } from "./print/imposition";
 import { pruneExceptions, sameAnchor, type BlockAnchor, type LocalException } from "./print/orientation";
 import { insertLine, isMarkerLine, moveLine, onlyMarkersChanged, removeLine, replaceLine } from "./print/markerEdit";
-import type { MarkAction } from "./ui/orientationMarks";
+import { setGhost, type MarkAction } from "./ui/orientationMarks";
 import type { OrientationTarget } from "./formats/types";
 import { pickForward, showHelp, showHistoryTree, showSettings } from "./ui/dialogs";
 import { PageView, pageViewKey, type PageColumns } from "./ui/pageView";
@@ -49,8 +49,9 @@ class Tab {
   token = 0;
   /** Zoom the view was last rendered with. */
   zoom = 0;
-  /** Zoom chosen for this document; a newly opened document starts at 100 %. */
-  scale = 1;
+  /** Zoom of this document in the continuous view and in the page view; new documents start at the presets. */
+  flowScale = 1;
+  pageScale = 1;
   /** Title bar of the pane, visible when documents are shown side by side. */
   readonly head = el("div", { className: "pane-head" });
   readonly headTitle = el("span", { className: "pane-title" });
@@ -83,6 +84,16 @@ class Tab {
     this.format = format;
     this.frame.replaceChildren(this.head, view.element, ...(this.pages ? [this.pages.element] : []));
     this.showMode();
+  }
+
+  /** Zoom of the view shown now. */
+  get scale(): number {
+    return this.pageMode ? this.pageScale : this.flowScale;
+  }
+
+  set scale(value: number) {
+    if (this.pageMode) this.pageScale = value;
+    else this.flowScale = value;
   }
 
   /** True when the page view is shown (it needs a document that can be laid out as pages). */
@@ -156,7 +167,8 @@ export class App {
     const restored = this.tabs[Math.min(Math.max(this.session.active, 0), this.tabs.length - 1)];
     for (const i of this.session.pageTabs) if (this.tabs[i]) this.tabs[i].pageMode = true;
     // Restored tabs keep their zoom; anything opened anew starts at 100 %.
-    this.session.zooms?.forEach((z, i) => this.tabs[i] && (this.tabs[i].scale = this.clampZoom(z)));
+    this.session.zooms?.forEach((z, i) => this.tabs[i] && (this.tabs[i].flowScale = this.clampZoom(z)));
+    this.session.pageZooms?.forEach((z, i) => this.tabs[i] && (this.tabs[i].pageScale = this.clampZoom(z)));
     this.session.panes.forEach((i, n) => {
       const tab = this.tabs[i];
       if (!tab || this.panes.includes(tab) || this.panes.length >= MAX_PANES) return;
@@ -205,7 +217,7 @@ export class App {
   }
 
   private viewContext(tab: Tab): ViewContext {
-    return { theme: effectiveTheme(), zoom: tab.scale };
+    return { theme: effectiveTheme(), zoom: tab.flowScale };
   }
 
   private isViewable = (path: string) => formatFor(path, this.config) !== null;
@@ -227,6 +239,9 @@ export class App {
 
   private addTab(history: HistoryTree, index = this.tabs.length): Tab {
     const tab = new Tab(history);
+    // A newly opened document starts at the zoom from the settings (restored tabs get theirs afterwards).
+    tab.flowScale = this.clampZoom(this.config.zoomContinuous ?? 1);
+    tab.pageScale = this.clampZoom(this.config.zoomPages ?? 1);
     const close = el("button", { className: "pane-close", textContent: "×", title: "Remove from side by side (the tab stays open)" });
     close.addEventListener("click", () => this.closePane(tab));
     tab.head.append(close);
@@ -262,7 +277,7 @@ export class App {
     for (const t of this.panes) if (t !== tab && this.needsRender(t)) void this.renderTab(t, "restore");
     if (this.needsRender(tab)) await this.renderTab(tab, "restore");
     else {
-      if (tab.zoom !== tab.scale) this.applyViewZoom(tab);
+      if (tab.zoom !== tab.flowScale) this.applyViewZoom(tab);
       if (tab.pageMode) void this.buildPages(tab);
       this.afterShow(tab);
       // Switching to an already rendered tab also counts as viewing the document.
@@ -620,7 +635,7 @@ export class App {
       });
       tab.frame.append(tab.pages.element);
     }
-    tab.pages.setLayout(this.session.pageColumns as PageColumns, tab.scale);
+    tab.pages.setLayout(this.session.pageColumns as PageColumns, tab.pageScale);
     tab.showMode();
     const options = this.printOptions();
     // Your orientation exceptions for the document change its pages too.
@@ -652,7 +667,7 @@ export class App {
   /** Sheets per row in the page view; choosing it also switches the active tab to the page view. */
   private setPageColumns(columns: PageColumns): void {
     this.session.pageColumns = columns;
-    for (const t of this.panes) t.pages?.setLayout(columns, t.scale);
+    for (const t of this.panes) t.pages?.setLayout(columns, t.pageScale);
     if (this.active && !this.active.pageMode) this.togglePageView();
     this.scheduleSave();
   }
@@ -841,7 +856,7 @@ export class App {
     tab.version++;
     tab.renderedNode = node.id;
     tab.stale = false;
-    tab.zoom = tab.scale;
+    tab.zoom = tab.flowScale;
 
     const element = tab.view!.element;
     if (scroll === "keep") element.scrollTop = previousScroll;
@@ -878,6 +893,13 @@ export class App {
    * config. Ctrl+Z undoes the last file edit.
    */
   private async markAction(tab: Tab, action: MarkAction): Promise<void> {
+    if (action.type === "undo") {
+      setGhost(null);
+      await this.undoMarkEdit();
+      return;
+    }
+    // A label that disappears stays a moment as a ghost: one more click brings it back.
+    setGhost(action.ghost ?? null);
     if (action.type === "local") {
       this.setException(tab.path, { anchor: action.anchor, label: action.label }, action.orientation);
       return;
@@ -1122,10 +1144,47 @@ export class App {
     this.scheduleSave();
   }
 
+  /** The zoom from the settings for the view the tab shows (continuous or page view). */
+  private presetZoom(tab: Tab): number {
+    return this.clampZoom((tab.pageMode ? this.config.zoomPages : this.config.zoomContinuous) ?? 1);
+  }
+
+  /**
+   * The % button: a click goes back to the preset zoom, a double click to 100 %.
+   * The click waits a moment so a double click does not jump to the preset first.
+   */
+  private zoomButton(tab: Tab | null): HTMLButtonElement {
+    const preset = tab ? Math.round(this.presetZoom(tab) * 100) : 100;
+    const b = el("button", {
+      className: "bar-button",
+      textContent: `${Math.round((tab?.scale ?? 1) * 100)} %`,
+      title: `Zoom of this document — click: preset ${preset} % (Settings), double click: 100 %; Ctrl+0: 100 % ↔ preset; Ctrl+wheel or Ctrl+ +/− to change`,
+      disabled: !tab,
+    });
+    let timer = 0;
+    b.addEventListener("click", (e) => {
+      if (e.detail > 1) return;
+      clearTimeout(timer);
+      timer = window.setTimeout(() => this.active && this.applyZoom(this.presetZoom(this.active)), 250);
+    });
+    b.addEventListener("dblclick", () => {
+      clearTimeout(timer);
+      this.applyZoom(1);
+    });
+    return b;
+  }
+
+  /** Ctrl+0: 100 % first (as in browsers); at 100 % already, the preset. */
+  private resetZoom(): void {
+    const tab = this.active;
+    if (!tab) return;
+    this.applyZoom(tab.scale !== 1 ? 1 : this.presetZoom(tab));
+  }
+
   private applyViewZoom(tab: Tab): void {
-    tab.view?.setZoom(tab.scale);
-    tab.pages?.setLayout(this.session.pageColumns as PageColumns, tab.scale);
-    tab.zoom = tab.scale;
+    tab.view?.setZoom(tab.flowScale);
+    tab.pages?.setLayout(this.session.pageColumns as PageColumns, tab.pageScale);
+    tab.zoom = tab.flowScale;
   }
 
   // ------------------------------------------------------------ session
@@ -1143,7 +1202,8 @@ export class App {
     this.session.panes = this.panes.map((t) => this.tabs.indexOf(t));
     this.session.paneSizes = this.panes.map((t) => Math.round(t.size * 1000) / 1000);
     this.session.pageTabs = this.tabs.flatMap((t, i) => (t.pageMode ? [i] : []));
-    this.session.zooms = this.tabs.map((t) => t.scale);
+    this.session.zooms = this.tabs.map((t) => t.flowScale);
+    this.session.pageZooms = this.tabs.map((t) => t.pageScale);
     this.session.toc = this.toc.visible;
     await backend.saveState("session", this.session);
   }
@@ -1234,8 +1294,18 @@ export class App {
       Object.assign(button("+", "Open — recent documents or a file (Ctrl+O)", () => this.showOpenMenu()), { className: "bar-button open-button" }),
       button("⎙", "Print — Ctrl+P", () => this.print(), !tab?.view?.printPages),
       Object.assign(
-        button(`${Math.round((tab?.scale ?? 1) * 100)} %`, "Zoom of this document — click for 100 % (Ctrl+0); Ctrl+wheel or Ctrl+ +/− to change", () => this.applyZoom(1), !tab),
-        { className: `bar-button zoom-button${tab && tab.scale !== 1 ? " on" : ""}` },
+        this.zoomButton(tab),
+        { className: `bar-button zoom-button${tab && tab.scale !== this.presetZoom(tab) ? " on" : ""}` },
+      ),
+      // One button switches between the continuous text and the pages as printed.
+      Object.assign(
+        button(
+          "▤",
+          tab?.pageMode ? "Pages as printed — click for the continuous view (Ctrl+Shift+P)" : "Continuous view — click for the pages as printed (Ctrl+Shift+P)",
+          () => this.togglePageView(),
+          !tab?.view?.printPages,
+        ),
+        { className: `bar-button page-toggle${tab?.pageMode ? " on" : ""}` },
       ),
       Object.assign(button("▥", "View — documents side by side, pages as printed", () => this.showViewMenu()), {
         className: `bar-button view-button${split || tab?.pageMode ? " on" : ""}`,
@@ -1358,7 +1428,7 @@ export class App {
     if (mod && !e.altKey) {
       if (key === "+" || key === "=" || e.code === "NumpadAdd") this.applyZoom((this.active?.scale ?? 1) * 1.1);
       else if (key === "-" || e.code === "NumpadSubtract") this.applyZoom((this.active?.scale ?? 1) / 1.1);
-      else if (key === "0" || e.code === "Numpad0") this.applyZoom(1);
+      else if (key === "0" || e.code === "Numpad0") this.resetZoom();
       else if (key === "t" && e.shiftKey) this.reopenClosed();
       else if (key === "o" && e.shiftKey) this.showOpenWithMenu();
       else if (key === "o" || key === "t") void this.openDialog();

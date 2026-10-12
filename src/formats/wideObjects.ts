@@ -79,6 +79,20 @@ function reset(element: HTMLElement): void {
   element.style.maxWidth = "";
   element.style.marginLeft = "";
   element.style.boxSizing = "";
+  element.style.zoom = "";
+  element.style.overflow = "";
+  for (const e of [element, ...element.querySelectorAll<HTMLElement>(":scope > code")]) {
+    e.style.whiteSpace = "";
+    e.style.overflowWrap = "";
+  }
+}
+
+/** How code and math too wide for the room are handled on screen, as on paper (print settings). */
+export interface LineFit {
+  /** Smallest text size in px they may be scaled to. */
+  minFontPx: number;
+  /** Still too wide at that size: code wraps (true), or it scrolls sideways. */
+  split: boolean;
 }
 
 /**
@@ -86,7 +100,7 @@ function reset(element: HTMLElement): void {
  * writes are batched (a handful of layouts for the whole document), because
  * this runs on every resize of the view.
  */
-export function fitWideObjects(article: HTMLElement, view: HTMLElement, zoom: number, widths: Widths | null): void {
+export function fitWideObjects(article: HTMLElement, view: HTMLElement, zoom: number, widths: Widths | null, lines: LineFit = { minFontPx: 9, split: true }): void {
   const objects = wideCandidates(article);
   objects.forEach((o) => reset(o.element));
   if (!widths || !objects.length) return;
@@ -96,18 +110,36 @@ export function fitWideObjects(article: HTMLElement, view: HTMLElement, zoom: nu
   const limit = Math.max(widths.objects, widths.text);
   const { available, least, most } = measureObjects(objects, zoom);
 
+  /** Scale of code and math that had to shrink to fit (1 = none). */
+  const scales = objects.map(() => 1);
   const targets = objects.map(({ element, kind }, i) => {
-    const width =
-      kind === "rigid"
-        ? Math.min(room, Math.max(least[i], Math.min(most[i], limit))) // as narrow as possible without scrolling
-        : Math.min(room, naturalWidth(element), limit);
+    if (kind === "rigid") {
+      // Like on paper: as wide as the object stop allows (tables unwrap up to it), then
+      // smaller text down to the smallest size, then wrapped lines (code) or scrolling.
+      const cap = Math.min(room, limit);
+      if (least[i] <= available[i] + 1) return 0;
+      if (least[i] <= cap) return Math.min(most[i] + BORDER_SLACK, cap);
+      const needed = least[i] + BORDER_SLACK;
+      scales[i] = Math.max(cap / needed, minScale(element, lines.minFontPx));
+      return Math.min(needed * scales[i], cap);
+    }
+    const width = Math.min(room, naturalWidth(element), limit);
     return width > available[i] + 1 ? width : 0;
   });
   objects.forEach(({ element }, i) => {
     if (!targets[i]) return;
     element.classList.add("mdz-wide");
     element.style.maxWidth = "none";
-    element.style.width = `${targets[i]}px`;
+    const scale = scales[i];
+    // The width is given before the scale; the element looks `targets[i]` wide.
+    element.style.width = `${targets[i] / scale}px`;
+    if (scale >= 1) return;
+    element.style.zoom = String(scale);
+    // Fits at this size: no scroll bar for a pixel of collapsed borders.
+    if ((least[i] + BORDER_SLACK) * scale <= targets[i] + 1) element.style.overflow = "visible";
+    if (lines.split && element.tagName === "PRE" && least[i] * scale > targets[i] + 1) {
+      for (const e of [element, ...element.querySelectorAll<HTMLElement>(":scope > code")]) Object.assign(e.style, { whiteSpace: "pre-wrap", overflowWrap: "anywhere" });
+    }
   });
   // Centre in the view: shift each widened object from where it starts now. A margin, not a
   // transform: the view's scroll width follows the layout box and must not grow.
@@ -117,7 +149,8 @@ export function fitWideObjects(article: HTMLElement, view: HTMLElement, zoom: nu
   objects.forEach(({ element }, i) => {
     if (!targets[i]) return;
     const shift = (centre - (targets[i] * zoom) / 2 - lefts[i]) / zoom;
-    element.style.marginLeft = `${shift}px`;
+    // A scaled element scales its margin too.
+    element.style.marginLeft = `${shift / scales[i]}px`;
   });
 }
 
