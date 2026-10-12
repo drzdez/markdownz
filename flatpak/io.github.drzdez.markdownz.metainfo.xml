@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.4" date="2026-10-12">
+      <description>
+        <p>The tab menu can copy the path of the document.</p>
+      </description>
+    </release>
     <release version="0.4.3" date="2026-10-12">
       <description>
         <p>Code, tables and math on screen keep within the object width and shrink before they wrap or scroll. Removed marks can be brought back for a few seconds. New documents open at a zoom set in Settings (separately for the continuous and the page view), and one toolbar button switches between the two views.</p>
