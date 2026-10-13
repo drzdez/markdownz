@@ -353,6 +353,7 @@ export class App {
   }
 
   private copyPath(path: string): void {
+    path = backend.displayPath(path);
     navigator.clipboard.writeText(path).then(
       () => toast(`Copied: ${path}`),
       (e) => toast(`Cannot copy the path: ${e}`),
@@ -365,7 +366,7 @@ export class App {
     const run = (action: () => Promise<void>) => () => void action().catch((e) => toast(`Cannot open: ${e}`));
     const apps = this.config.openWith.filter((a) => !a.extensions?.length || a.extensions.includes(ext));
     return [
-      ...apps.map((app) => ({ label: `Open in ${app.name}`, action: run(() => backend.openWith(path, app.program, app.args)) })),
+      ...(backend.isMobile ? [] : apps.map((app) => ({ label: `Open in ${app.name}`, action: run(() => backend.openWith(path, app.program, app.args)) }))),
       {
         label: "Open with…",
         hint: "Ctrl+Shift+O",
@@ -375,7 +376,7 @@ export class App {
           if (app) await backend.openWith(path, "open", ["-a", app, "{file}"]);
         }),
       },
-      { label: "Show in folder", action: run(() => backend.revealFile(path)) },
+      ...(backend.canReveal ? [{ label: "Show in folder", action: run(() => backend.revealFile(path)) }] : []),
       ...(copy ? [{ label: "Copy document path", action: () => this.copyPath(path) }] : []),
     ];
   }
@@ -491,11 +492,11 @@ export class App {
     const anchor = this.tabbar.querySelector<HTMLElement>(".open-button")?.getBoundingClientRect();
     const recent: MenuItem[] = this.session.recent.map((r) => ({
       label: r.title || basename(r.path),
-      detail: r.missing ? `deleted · ${r.path}` : `${relativeTime(r.opened, Date.now())} · ${r.path}`,
+      detail: r.missing ? `deleted · ${backend.displayPath(r.path)}` : `${relativeTime(r.opened, Date.now())} · ${backend.displayPath(r.path)}`,
       className: r.missing ? "deleted" : "",
       key: r.path,
       action: (visible) => void this.openRecent(r, visible),
-      side: { icon: folderIcon(), title: "Show in folder", action: () => void this.showInFolder(r.path) },
+      side: backend.canReveal ? { icon: folderIcon(), title: "Show in folder", action: () => void this.showInFolder(r.path) } : undefined,
     }));
     showContextMenu(anchor ? anchor.left : 40, anchor ? anchor.bottom + 4 : 40, [
       { label: "Open file…", hint: "Ctrl+O", action: () => void this.openDialog() },
@@ -799,7 +800,23 @@ export class App {
     const count = this.panes.length;
     const columns = this.session.pageColumns;
     const canPage = !!tab?.view?.printPages;
+    // What the toolbar has no room for on narrow screens (see renderTabbar).
+    const narrow: (MenuItem | null)[] = isNarrow()
+      ? [
+          { label: "Zoom in", hint: `${Math.round((tab?.scale ?? 1) * 100)} %`, disabled: !tab, action: () => this.applyZoom((tab?.scale ?? 1) * 1.25) },
+          { label: "Zoom out", disabled: !tab, action: () => this.applyZoom((tab?.scale ?? 1) / 1.25) },
+          { label: "Zoom 100 % / preset", hint: "Ctrl+0", disabled: !tab, action: () => this.resetZoom() },
+          null,
+          { label: "Reload", hint: "F5", disabled: !tab, action: () => this.reload() },
+          { label: "History tree", hint: "Ctrl+H", disabled: !tab, action: () => this.showHistory() },
+          ...(tab ? this.openWithItems(tab.path) : []),
+          { label: "Print…", hint: "Ctrl+P", disabled: !canPage, action: () => this.print() },
+          { label: "Help", hint: "F1", action: showHelp },
+          null,
+        ]
+      : [];
     showContextMenu(anchor ? anchor.right - 280 : 40, anchor ? anchor.bottom + 4 : 40, [
+      ...narrow,
       { label: "One document", hint: count > 1 ? "Ctrl+\\" : undefined, className: check(count <= 1), disabled: !tab, action: () => this.setPaneCount(1) },
       ...[2, 3, 4].map((n) => ({
         label: `${n} documents side by side`,
@@ -1035,7 +1052,11 @@ export class App {
   }
 
   private reload(): void {
-    if (this.active) void this.renderTab(this.active, "keep");
+    const tab = this.active;
+    if (!tab) return;
+    // Android: the local copy is refreshed from the original first.
+    const refresh = backend.isMobile ? backend.resolvePath(tab.path).catch((e) => toast(`Cannot reload: ${e}`)) : Promise.resolve();
+    void refresh.then(() => this.renderTab(tab, "keep"));
   }
 
   /** Called by the file watcher; debounced because editors often write in several steps. */
@@ -1215,6 +1236,13 @@ export class App {
     this.session.pageZooms = this.tabs.map((t) => t.pageScale);
     this.session.toc = this.toc.visible;
     await backend.saveState("session", this.session);
+    if (backend.isMobile) {
+      backend.pruneDocuments([
+        ...this.tabs.flatMap((t) => t.history.toJSON().nodes.map((n) => n.path)),
+        ...this.session.closed.flatMap((h) => h.nodes.map((n) => n.path)),
+        ...this.session.recent.map((r) => r.path),
+      ]);
+    }
   }
 
   private async quit(): Promise<void> {
@@ -1271,7 +1299,7 @@ export class App {
     for (const t of this.panes) t.headTitle.textContent = t.paged ? `${t.title} · pages` : t.title;
     const items = this.tabs.map((t) => {
       const shown = split && this.panes.includes(t);
-      const item = el("div", { className: `tab${t === tab ? " active" : ""}${shown ? " shown" : ""}`, title: shown ? `${t.path} (shown side by side)` : t.path });
+      const item = el("div", { className: `tab${t === tab ? " active" : ""}${shown ? " shown" : ""}`, title: shown ? `${backend.displayPath(t.path)} (shown side by side)` : backend.displayPath(t.path) });
       item.setAttribute("role", "tab");
       item.setAttribute("aria-selected", String(t === tab));
       const close = el("button", { className: "tab-close", textContent: "×", title: "Close tab (Ctrl+W)" });
@@ -1295,34 +1323,39 @@ export class App {
       return item;
     });
 
+    // Buttons marked "narrow-hide" leave the bar on narrow screens (phones); the ▥ menu offers them instead.
+    const secondary = (b: HTMLButtonElement) => {
+      b.classList.add("narrow-hide");
+      return b;
+    };
     this.tabbar.replaceChildren(
       button("←", "Back — Alt+←", () => void this.back(), !tab?.history.canBack),
       forward,
-      button("⑂", "History tree — Ctrl+H", () => this.showHistory(), !tab),
+      secondary(button("⑂", "History tree — Ctrl+H", () => this.showHistory(), !tab)),
       el("div", { className: "tabs" }, ...items),
       Object.assign(button("+", "Open — recent documents or a file (Ctrl+O)", () => this.showOpenMenu()), { className: "bar-button open-button" }),
-      button("⎙", "Print — Ctrl+P", () => this.print(), !tab?.view?.printPages),
+      secondary(button("⎙", "Print — Ctrl+P", () => this.print(), !tab?.view?.printPages)),
       Object.assign(
-        this.zoomButton(tab),
-        { className: `bar-button zoom-button${tab && tab.scale !== this.presetZoom(tab) ? " on" : ""}` },
+        secondary(this.zoomButton(tab)),
+        { className: `bar-button narrow-hide zoom-button${tab && tab.scale !== this.presetZoom(tab) ? " on" : ""}` },
       ),
       // One button switches between the continuous text and the pages as printed.
       Object.assign(
-        button(
+        secondary(button(
           "▤",
           tab?.pageMode ? "Pages as printed — click for the continuous view (Ctrl+Shift+P)" : "Continuous view — click for the pages as printed (Ctrl+Shift+P)",
           () => this.togglePageView(),
           !tab?.view?.printPages,
-        ),
-        { className: `bar-button page-toggle${tab?.pageMode ? " on" : ""}` },
+        )),
+        { className: `bar-button narrow-hide page-toggle${tab?.pageMode ? " on" : ""}` },
       ),
       Object.assign(button("▥", "View — documents side by side, pages as printed", () => this.showViewMenu()), {
         className: `bar-button view-button${split || tab?.pageMode ? " on" : ""}`,
       }),
-      openWith,
+      secondary(openWith),
       button("☰", "Table of contents — Ctrl+B", () => this.toggleToc()),
       button("⚙", "Settings — Ctrl+,", () => this.openSettings()),
-      button("?", "Keyboard shortcuts — F1", showHelp),
+      secondary(button("?", backend.isMobile ? "Help" : "Keyboard shortcuts — F1", showHelp)),
     );
     this.tabbar.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
@@ -1350,10 +1383,10 @@ export class App {
         "section",
         { className: "welcome" },
         el("h1", { textContent: "Markdownz" }),
-        el("p", { textContent: "Open a Markdown or PDF document, or drop it here." }),
+        el("p", { textContent: backend.isMobile ? "Open a Markdown or PDF document, or send it here from a file manager or the share sheet." : "Open a Markdown or PDF document, or drop it here." }),
         open,
         el("div", { className: "welcome-recent" }),
-        el("p", { className: "mdz-hint", textContent: "Ctrl+O open · F1 shortcuts · Esc close" }),
+        el("p", { className: "mdz-hint", textContent: backend.isMobile ? "Long press a tab or a block for its menu · ? for help" : "Ctrl+O open · F1 shortcuts · Esc close" }),
       );
       this.docs.append(this.welcome);
     }
@@ -1366,18 +1399,22 @@ export class App {
     if (!box) return;
     const now = Date.now();
     const items = this.session.recent.map((r) => {
+      const shown = backend.displayPath(r.path);
       const item = el(
         "button",
-        { className: `recent-item${r.missing ? " deleted" : ""}`, title: r.missing ? `Deleted: ${r.path}` : r.path },
+        { className: `recent-item${r.missing ? " deleted" : ""}`, title: r.missing ? `Deleted: ${shown}` : shown },
         el("span", { className: "recent-title", textContent: r.title || basename(r.path) }),
         el("span", { className: "recent-when", textContent: r.missing ? "deleted" : relativeTime(r.opened, now) }),
-        el("small", { className: "recent-path", textContent: r.path }),
+        el("small", { className: "recent-path", textContent: shown }),
       );
       item.addEventListener("click", () => void this.openRecent(r, visibleKeys(box as HTMLElement)));
-      const folder = el("button", { className: "recent-folder", title: "Show in folder" }, folderIcon());
-      folder.setAttribute("aria-label", "Show in folder");
-      folder.addEventListener("click", () => void this.showInFolder(r.path));
-      const row = el("div", { className: "recent-row" }, item, folder);
+      const row = el("div", { className: "recent-row" }, item);
+      if (backend.canReveal) {
+        const folder = el("button", { className: "recent-folder", title: "Show in folder" }, folderIcon());
+        folder.setAttribute("aria-label", "Show in folder");
+        folder.addEventListener("click", () => void this.showInFolder(r.path));
+        row.append(folder);
+      }
       row.dataset.key = r.path;
       return row;
     });
@@ -1408,14 +1445,54 @@ export class App {
     if (import.meta.env.PROD) window.addEventListener("contextmenu", (e) => e.preventDefault());
 
     backend.onOpenFiles((paths) => void this.openFiles(paths));
+    backend.onOpenError((message) => toast(`Cannot open: ${message}`, "warning"));
     backend.onDropFiles((paths) => void this.openFiles(paths));
     backend.onDocChanged((path) => this.onDocChanged(path));
     backend.onCloseRequested(() => this.saveSession());
+    if (backend.isMobile) this.bindTouch();
     // The width ruler of a Markdown view was dragged.
     window.addEventListener("mdz-widths", (e) => {
       this.config = { ...this.config, widths: { ...(e as CustomEvent<{ text: number; objects: number }>).detail } };
       void backend.saveState("config", this.config);
     });
+  }
+
+  /** Android: the Back button and pinch zoom. */
+  private bindTouch(): void {
+    // Called by MainActivity for the Back button; true when the page handled it.
+    (window as { mdzBack?: () => boolean }).mdzBack = () => {
+      const layer = topLayer();
+      if (layer) {
+        layer.close();
+        return true;
+      }
+      if (this.active?.history.canBack) {
+        void this.back();
+        return true;
+      }
+      return false;
+    };
+    let pinch: { distance: number; scale: number } | null = null;
+    const distance = (t: TouchList) => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+    this.docs.addEventListener(
+      "touchstart",
+      (e) => {
+        if (e.touches.length === 2 && this.active) pinch = { distance: distance(e.touches), scale: this.active.scale };
+      },
+      { passive: true },
+    );
+    this.docs.addEventListener(
+      "touchmove",
+      (e) => {
+        if (!pinch || e.touches.length !== 2) return;
+        e.preventDefault();
+        this.applyZoom((pinch.scale * distance(e.touches)) / pinch.distance, false);
+      },
+      { passive: false },
+    );
+    const end = () => (pinch = null);
+    this.docs.addEventListener("touchend", end);
+    this.docs.addEventListener("touchcancel", end);
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -1478,6 +1555,11 @@ export class App {
       e.stopPropagation();
     }
   }
+}
+
+/** Phone-sized windows: the toolbar shows only the essentials (see renderTabbar). */
+function isNarrow(): boolean {
+  return window.matchMedia("(max-width: 640px)").matches;
 }
 
 let toastTimer: number | undefined;

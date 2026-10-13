@@ -1,4 +1,5 @@
 import type { HistoryNode, HistoryTree } from "../history";
+import { canCheckUpdates, isMobile } from "../backend";
 import { basename } from "../paths";
 import { FORMATS, isFormatEnabled } from "../formats/registry";
 import { PLUGINS, isEnabled } from "../render/renderer";
@@ -167,7 +168,9 @@ export function showSettings(config: Config, onChange: (config: Config) => void,
     el("label", {}, daily, " Check for a new version once a day"),
     now,
   );
-  const layer = openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, zoomGroup, formatGroup, pluginGroup, updateGroup));
+  // Android gets new versions as an APK, there is nothing to check in the app.
+  const groups = canCheckUpdates ? [themeGroup, zoomGroup, formatGroup, pluginGroup, updateGroup] : [themeGroup, zoomGroup, formatGroup, pluginGroup];
+  const layer = openModal("Settings", el("div", { className: "mdz-settings" }, ...groups));
   now.addEventListener("click", () => {
     layer.close();
     checkNow();
@@ -205,9 +208,22 @@ const SHORTCUTS: [string, string][] = [
   ["F1", "This help"],
 ];
 
+const TOUCH: [string, string][] = [
+  ["Tap +", "Open: recent documents or the document picker"],
+  ["Long press a tab", "Copy document path, close others / to the right / to the left / all"],
+  ["Long press a block or page", "Turn it landscape / portrait, add or copy a marker"],
+  ["Pinch", "Zoom this document"],
+  ["Back", "Close dialog / find bar, go back in the tab, otherwise leave the app"],
+  ["Open with / Share from any app", "Opens the document in Markdownz"],
+];
+
 export function showHelp(): void {
   const mac = navigator.userAgent.includes("Mac");
   const table = el("table", { className: "mdz-shortcuts" });
+  if (isMobile) {
+    for (const [gesture, action] of TOUCH) table.append(el("tr", {}, el("td", {}, el("kbd", { textContent: gesture })), el("td", { textContent: action })));
+    table.append(el("tr", {}, el("td", { colSpan: 2 }, el("small", { textContent: "With a keyboard:" }))));
+  }
   for (const [keys, action] of SHORTCUTS) {
     table.append(el("tr", {}, el("td", {}, el("kbd", { textContent: mac ? keys.replace(/Ctrl/g, "⌘").replace(/Alt/g, "⌥") : keys })), el("td", { textContent: action })));
   }

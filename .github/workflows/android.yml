@@ -1,0 +1,109 @@
+name: Android
+
+# Builds the Android APK: a debug build (installable for testing) on every push
+# and pull request, and on a version tag the release APK, signed when the
+# repository has the signing secrets (see README, "Android"), attached to the
+# draft release that release.yml creates.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  NDK_VERSION: 27.2.12479018
+
+jobs:
+  apk:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools ndk;${{ env.NDK_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
+          key: android
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - run: npm ci
+
+      - name: Signing key
+        # Only on a tag and only when the secrets exist: the APK is signed with
+        # the release key so updates install over the previous version.
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE" ]; then
+            echo "No ANDROID_KEYSTORE secret: the release APK will be unsigned." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "$ANDROID_KEYSTORE" | base64 -d > src-tauri/gen/android/release.jks
+          cat > src-tauri/gen/android/keystore.properties <<EOF
+          storeFile=release.jks
+          storePassword=$ANDROID_KEYSTORE_PASSWORD
+          keyAlias=$ANDROID_KEY_ALIAS
+          keyPassword=$ANDROID_KEY_PASSWORD
+          EOF
+
+      - name: Build APK
+        env:
+          NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/${{ env.NDK_VERSION }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            npx tauri android build --apk --target aarch64 --target armv7
+          else
+            npx tauri android build --apk --debug --target aarch64
+          fi
+          mkdir -p out
+          find src-tauri/gen/android/app/build/outputs/apk -name '*.apk' -print -exec cp {} out/ \;
+          ls -l out
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Markdownz-android
+          path: out/*.apk
+
+      - name: Upload to release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          for file in out/*.apk; do
+            case "$file" in
+              *unsigned*) name="Markdownz_${version}_android-unsigned.apk" ;;
+              *) name="Markdownz_${version}_android.apk" ;;
+            esac
+            cp "$file" "$name"
+            # The draft release is created by release.yml; wait for it when this job is faster.
+            for i in $(seq 30); do
+              gh release upload "$GITHUB_REF_NAME" "$name" --clobber -R "$GITHUB_REPOSITORY" && break
+              sleep 60
+            done
+          done

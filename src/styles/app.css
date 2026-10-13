@@ -1464,3 +1464,43 @@ kbd {
     padding: 0;
   }
 }
+
+/* --------------------------------------------------------- small screens */
+
+/* Phones: only the essential buttons stay in the bar, the rest is in the ▥ menu (see renderTabbar). */
+@media (max-width: 640px) {
+  #tabbar .narrow-hide {
+    display: none;
+  }
+
+  .tab {
+    min-width: 64px;
+  }
+}
+
+/* Touch: larger targets, no hover states that stick after a tap. */
+@media (pointer: coarse) {
+  .bar-button {
+    min-width: 38px;
+    padding: 6px 8px;
+    font-size: 16px;
+  }
+
+  .tab {
+    padding: 8px 6px 8px 12px;
+  }
+
+  .tab-close {
+    width: 28px;
+    height: 28px;
+  }
+
+  .bar-button:hover:not(:disabled),
+  .tab:hover {
+    background: transparent;
+  }
+
+  .tab.active {
+    background: var(--bg);
+  }
+}

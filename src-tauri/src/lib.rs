@@ -1,6 +1,8 @@
 //! Native side of Markdownz: reading and watching files, persisting state and
 //! routing "open this file" requests (command line, second instance, macOS
-//! file associations) to the single viewer window.
+//! file associations) to the single viewer window. The same code runs on
+//! Android, where documents are first copied into the app's storage by the
+//! Kotlin side (gen/android/.../MainActivity.kt) and then read like any file.
 
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
@@ -134,10 +136,12 @@ fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
 }
 
 /// "self" when the updater can install new versions in place, "manual" when the
-/// package is managed elsewhere (Flatpak, .deb, .rpm: only AppImage self-updates on Linux).
+/// package is managed elsewhere (Flatpak, .deb, .rpm: only AppImage self-updates on Linux;
+/// Android installs a new APK).
 #[tauri::command]
 fn update_mode() -> &'static str {
-    if cfg!(target_os = "linux") && (std::env::var_os("FLATPAK_ID").is_some() || std::env::var_os("APPIMAGE").is_none()) {
+    let linux_package = cfg!(target_os = "linux") && (std::env::var_os("FLATPAK_ID").is_some() || std::env::var_os("APPIMAGE").is_none());
+    if cfg!(mobile) || linux_package {
         "manual"
     } else {
         "self"
@@ -236,7 +240,16 @@ fn take_startup_files(state: State<'_, Mutex<Pending>>) -> Vec<String> {
 
 #[tauri::command]
 fn print_page(window: WebviewWindow) -> Result<(), String> {
-    window.print().map_err(|e| e.to_string())
+    #[cfg(desktop)]
+    {
+        window.print().map_err(|e| e.to_string())
+    }
+    #[cfg(mobile)]
+    {
+        // Android prints through the activity (MainActivity.kt), see backend.ts.
+        let _ = window;
+        Err("printing is handled by the Android side".into())
+    }
 }
 
 /// Existing files named on a command line; relative paths are resolved against `cwd`.
@@ -250,6 +263,8 @@ fn files_from_args(args: impl IntoIterator<Item = String>, cwd: &Path) -> Vec<St
         .collect()
 }
 
+/// Desktop: a second instance or the macOS Finder handed over files.
+#[cfg(desktop)]
 fn open_files(app: &AppHandle, files: Vec<String>) {
     if files.is_empty() {
         return;
@@ -263,6 +278,7 @@ fn open_files(app: &AppHandle, files: Vec<String>) {
     }
     drop(pending);
     if let Some(window) = app.get_webview_window("main") {
+        #[cfg(desktop)]
         let _ = window.unminimize();
         let _ = window.show();
         let _ = window.set_focus();
@@ -296,16 +312,21 @@ pub fn run() {
     let cwd = std::env::current_dir().unwrap_or_default();
     let startup = files_from_args(std::env::args().skip(1), &cwd);
 
-    tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    // Desktop only: on Android the activity receives files as intents (see
+    // gen/android/.../MainActivity.kt) and updates arrive as a new APK.
+    #[cfg(desktop)]
+    let builder = builder
         // Must be registered first: a second launch hands its files to this instance.
         .plugin(tauri_plugin_single_instance::init(|app, argv, cwd| {
             open_files(app, files_from_args(argv.into_iter().skip(1), Path::new(&cwd)));
         }))
         .plugin(tauri_plugin_window_state::Builder::default().build())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init());
+    builder
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_updater::Builder::new().build())
-        .plugin(tauri_plugin_process::init())
         .manage(Mutex::new(Pending { ready: false, files: startup }))
         .setup(|app| {
             let files = Arc::new(Mutex::new(HashSet::new()));

@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+  <external-path name="my_images" path="." />
+  <cache-path name="my_cache_images" path="." />
+  <!-- Copies of the open documents, handed to other apps by "Open with" when the original is out of reach. -->
+  <files-path name="docs" path="docs/" />
+</paths>

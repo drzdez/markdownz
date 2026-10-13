@@ -1,6 +1,6 @@
 # Markdownz
 
-A fast, lightweight **viewer** for Markdown and PDF documents on Windows, macOS and Linux.
+A fast, lightweight **viewer** for Markdown and PDF documents on Windows, macOS, Linux and Android.
 Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 
 - **Instant start.** Uses the system web view instead of bundling a browser, so installers are only a few MB.
@@ -138,6 +138,7 @@ Download the installer for your platform from [Releases](https://github.com/drzd
 | Windows 10/11 | `.msi` or `-setup.exe` (uses the preinstalled WebView2 runtime) |
 | macOS 11+ | `.dmg` (Apple Silicon and Intel builds) |
 | Linux | `.flatpak`, `.deb`, `.rpm` or `.AppImage` (the non-Flatpak packages need WebKitGTK 4.1) |
+| Android 7+ | `.apk` (uses the system WebView), see [Android](#android) |
 
 Flatpak: `flatpak install --user ./Markdownz_<version>_x86_64.flatpak` (needs the Flathub remote for the GNOME runtime; see [flatpak/README.md](flatpak/README.md), which also describes publishing on Flathub). Fedora Silverblue, Kinoite and Bazzite should prefer the Flatpak; Fedora Workstation can use the `.rpm` too.
 
@@ -149,6 +150,16 @@ The installers register Markdownz for Markdown files (`.md`, `.markdown`, …) a
 | macOS | *Get Info* on a file → *Open with: Markdownz* → *Change All…* |
 | Linux (deb/rpm) | `xdg-mime default Markdownz.desktop text/markdown application/pdf` |
 | Linux (Flatpak) | `xdg-mime default io.github.drzdez.markdownz.desktop text/markdown application/pdf`, or the file manager's *Open With* dialog |
+| Android | Open a file in the file manager → *Open with* → Markdownz → *Always*, or *Settings → Apps → Default apps* |
+
+### Android
+
+The same app, built for phones and tablets. Install the `.apk` from Releases (allow the installation from the browser or file manager when asked). What is different:
+
+- **Documents come from other apps.** Android does not let an app browse the file system; a document reaches Markdownz through the file manager (*Open with*), the share sheet (*Share → Markdownz*) or the document picker behind **+** / *Open document…*. Markdownz keeps a copy of each document in its own storage and refreshes it from the original whenever the document is opened, reloaded or navigated to; documents chosen in the picker stay available in the recent list, documents handed over by other apps are read once (the last copy still shows). Relative links to other files do not work, as the app cannot see the folder.
+- **Phone layout.** On narrow screens the toolbar keeps the essentials; zoom, reload, print, *Open with*, history and help are in the ▥ menu. Pinch to zoom, long press a tab or a block for its menu, the Back button closes dialogs and goes back in the tab. Tablets and larger windows show the full toolbar, side by side documents included.
+- **Open with…** shows the system chooser for the original document (an editor can save it back; Markdownz reloads at the next open); **Show in folder** does not exist. Printing and *Save as PDF* go through the Android print dialog.
+- **Updates** come as a new `.apk` from Releases; there is no in-app check. A new version installs over the old one only when both are signed with the same key (see below).
 
 ### Open with other applications
 
@@ -192,7 +203,24 @@ Other scripts:
 | `npm run dev` | Frontend only, in a normal browser: <http://localhost:1420/?file=/samples/demo.md> |
 | `cargo test` (in `src-tauri`) | Rust tests |
 
-Releases are built by GitHub Actions: push a tag such as `v0.1.0`, and [`release.yml`](.github/workflows/release.yml) builds all platforms into a draft release. Bump `version` in `package.json` first; the app reads its version from there.
+Releases are built by GitHub Actions: push a tag such as `v0.1.0`, and [`release.yml`](.github/workflows/release.yml) builds all desktop platforms into a draft release; [`android.yml`](.github/workflows/android.yml) adds the Android APK to it. Bump `version` in `package.json` first; the app reads its version from there.
+
+### Android build
+
+Prerequisites ([details](https://v2.tauri.app/start/prerequisites/#android)): [Android Studio](https://developer.android.com/studio) or the command line tools with an SDK platform, build tools and the **NDK** (SDK Manager → *SDK Tools*), Java 17+, and the Rust targets:
+
+```sh
+rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+export ANDROID_HOME="$HOME/Android/Sdk"            # where the SDK Manager installed to
+export NDK_HOME="$ANDROID_HOME/ndk/<version>"
+npm run tauri android dev                          # on a connected device or emulator, with hot reload
+npm run tauri android build -- --apk               # src-tauri/gen/android/app/build/outputs/apk/
+npm run tauri android build -- --apk --target aarch64 --debug   # one architecture, debug-signed: quick to install for testing
+```
+
+`src-tauri/gen/android/` is the Gradle project that `tauri android init` generated; it is checked in because [`MainActivity.kt`](src-tauri/gen/android/app/src/main/java/io/github/drzdez/markdownz/MainActivity.kt) (intents, the document picker, the copies of the documents, printing, the Back button) and the intent filters in `AndroidManifest.xml` are Markdownz's own. Everything else (frontend, Rust) is shared with the desktop; `src/backend.ts` is the only place that knows about the `MarkdownzAndroid` bridge.
+
+A release APK must be signed: create a key once with `keytool -genkey -v -keystore release.jks -keyalg RSA -keysize 2048 -validity 10000 -alias markdownz`, and for local builds put `keystore.properties` (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`) into `src-tauri/gen/android/` (both files are ignored by git). The workflow signs when the repository has the secrets `ANDROID_KEYSTORE` (the `.jks` file, base64), `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS` and `ANDROID_KEY_PASSWORD`; without them it attaches an unsigned APK, which Android refuses to install. Keep the key: users can only update to versions signed with the same one.
 
 ### Updates
 
@@ -216,13 +244,14 @@ src/                     frontend (TypeScript, Vite)
 src-tauri/               native shell (Rust, Tauri 2)
   src/lib.rs             file reading/watching, state files, single instance, file-open events, open with
   tauri.conf.json        window, security policy (CSP), bundling, file associations
-  capabilities/          what the web view is allowed to call
+  capabilities/          what the web view is allowed to call (default.json everywhere, desktop.json on desktop)
+  gen/android/           Android project; MainActivity.kt receives documents from other apps and copies them
 ```
 
 Rendering pipeline: `markdown-it` + enabled plugins → HTML → [DOMPurify](https://github.com/cure53/DOMPurify) → DOM → plugin `postRender` hooks (Mermaid and Graphviz turn placeholders into SVG) → shown.
 Heavy libraries (Mermaid, Viz.js, pdf.js) load only when a document needs them. pdf.js data files (CMaps, fonts, decoders) are copied to `public/pdfjs` by `scripts/copy-pdfjs.mjs` before `dev` and `build`.
 
-State lives in the OS config directory (`%APPDATA%\io.github.drzdez.markdownz` on Windows, `~/Library/Application Support/io.github.drzdez.markdownz` on macOS, `~/.config/io.github.drzdez.markdownz` on Linux): `session.json` (tabs, history, zoom) and `config.json` (theme, formats, Markdown extensions, open-with applications).
+State lives in the OS config directory (`%APPDATA%\io.github.drzdez.markdownz` on Windows, `~/Library/Application Support/io.github.drzdez.markdownz` on macOS, `~/.config/io.github.drzdez.markdownz` on Linux, the app's private storage on Android): `session.json` (tabs, history, zoom) and `config.json` (theme, formats, Markdown extensions, open-with applications).
 
 ### Adding a document format
 
