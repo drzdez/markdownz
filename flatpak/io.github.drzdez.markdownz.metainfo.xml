@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.6" date="2026-10-14">
+      <description>
+        <p>Pictures open in tabs too: PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, fitted to the window, with zoom and printing at the real size or fitted to the paper. The tab menu can copy the file itself, ready to paste into a folder or attach to an e-mail (Windows and macOS).</p>
+      </description>
+    </release>
     <release version="0.4.5" date="2026-10-14">
       <description>
         <p>The tab menu can copy the file itself, ready to paste into a folder or attach to an e-mail (Windows and macOS).</p>
