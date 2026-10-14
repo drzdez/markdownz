@@ -133,6 +133,47 @@ fn open_folder(app: AppHandle, path: String) -> Result<(), String> {
         .map_err(|e| e.to_string())
 }
 
+/// Puts the file itself on the clipboard (as the file manager's Copy does), so it
+/// can be pasted into a folder or attached to an e-mail.
+#[tauri::command]
+fn copy_file(path: String) -> Result<(), String> {
+    let file = dunce::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
+    if !file.is_file() {
+        return Err(format!("{path}: not a file"));
+    }
+    copy_file_to_clipboard(&file)
+}
+
+#[cfg(windows)]
+fn copy_file_to_clipboard(file: &Path) -> Result<(), String> {
+    let file = file.to_string_lossy();
+    let _open = clipboard_win::Clipboard::new_attempts(10).map_err(|e| e.to_string())?;
+    clipboard_win::raw::set_file_list(&[file.as_ref()]).map_err(|e| e.to_string())
+}
+
+#[cfg(target_os = "macos")]
+fn copy_file_to_clipboard(file: &Path) -> Result<(), String> {
+    // NSPasteboard with a file URL, through AppleScriptObjC; the path is passed as an argument.
+    let script = r#"use framework "AppKit"
+on run argv
+  set board to current application's NSPasteboard's generalPasteboard()
+  board's clearContents()
+  board's writeObjects:{current application's NSURL's fileURLWithPath:(item 1 of argv)}
+end run"#;
+    let status = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .arg(file)
+        .status()
+        .map_err(|e| format!("osascript: {e}"))?;
+    if status.success() { Ok(()) } else { Err(format!("osascript: {status}")) }
+}
+
+#[cfg(not(any(windows, target_os = "macos")))]
+fn copy_file_to_clipboard(_file: &Path) -> Result<(), String> {
+    Err("not supported on this platform".into())
+}
+
 /// "self" when the updater can install new versions in place, "manual" when the
 /// package is managed elsewhere (Flatpak, .deb, .rpm: only AppImage self-updates on Linux).
 #[tauri::command]
@@ -330,6 +371,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             read_doc,
             edit_doc,
+            copy_file,
             resolve_path,
             read_binary,
             open_with,

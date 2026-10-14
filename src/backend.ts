@@ -134,6 +134,14 @@ export async function pickApplication(): Promise<string | null> {
 
 export const isMac = navigator.userAgent.includes("Mac");
 
+/** Copying the file itself to the clipboard works on Windows and macOS. */
+export const canCopyFile = inTauri && (isMac || navigator.userAgent.includes("Windows"));
+
+/** Puts the file on the clipboard, ready to paste into a folder or an e-mail. */
+export async function copyFile(path: string): Promise<void> {
+  await invoke("copy_file", { path });
+}
+
 export interface AvailableUpdate {
   current: string;
   version: string;

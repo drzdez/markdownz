@@ -180,7 +180,7 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl+W · middle click", "Close tab"],
   ["Ctrl+Shift+T", "Reopen closed tab"],
   ["Ctrl+Tab · Ctrl+Shift+Tab", "Next / previous tab"],
-  ["Right click on tab", "Copy document path, close others / to the right / to the left / all"],
+  ["Right click on tab", "Copy file or its path, close others / to the right / to the left / all"],
   ["Drag a tab", "Reorder tabs"],
   ["Ctrl+1…9", "Go to tab"],
   ["Alt+← · mouse back", "Back"],

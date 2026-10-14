@@ -32,6 +32,9 @@ tauri-plugin-process = "2"
 # "Open with" chooser through xdg-desktop-portal (works inside Flatpak too).
 ashpd = { version = "0.13", default-features = false, features = ["tokio", "open_uri"] }
 
+[target."cfg(windows)".dependencies]
+clipboard-win = "5.4.1"
+
 [profile.release]
 codegen-units = 1
 lto = true

@@ -337,6 +337,7 @@ export class App {
         ? { label: "Remove from side by side", action: () => this.closePane(tab) }
         : { label: "Show side by side", disabled: shown || this.panes.length >= MAX_PANES, action: () => void this.showSideBySide(tab) },
       null,
+      { label: "Copy file", disabled: !backend.canCopyFile, action: () => this.copyFile(tab.path) },
       { label: "Copy document path", action: () => this.copyPath(tab.path) },
       null,
       { label: "Close", hint: "Ctrl+W", action: () => this.closeTabs(tab, "this") },
@@ -350,6 +351,14 @@ export class App {
       { label: "Print…", hint: "Ctrl+P", disabled: tab !== this.active || !tab.view?.printPages, action: () => this.print() },
       ...this.openWithItems(tab.path, false),
     ]);
+  }
+
+  /** The file itself on the clipboard: paste it into a folder or an e-mail. */
+  private copyFile(path: string): void {
+    backend.copyFile(path).then(
+      () => toast(`File copied, paste it into a folder or an e-mail: ${basename(path)}`),
+      (e) => toast(`Cannot copy the file: ${e}`),
+    );
   }
 
   private copyPath(path: string): void {
@@ -376,7 +385,12 @@ export class App {
         }),
       },
       { label: "Show in folder", action: run(() => backend.revealFile(path)) },
-      ...(copy ? [{ label: "Copy document path", action: () => this.copyPath(path) }] : []),
+      ...(copy
+        ? [
+            { label: "Copy file", disabled: !backend.canCopyFile, action: () => this.copyFile(path) },
+            { label: "Copy document path", action: () => this.copyPath(path) },
+          ]
+        : []),
     ];
   }
 
