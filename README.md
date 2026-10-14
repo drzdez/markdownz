@@ -1,6 +1,6 @@
 # Markdownz
 
-A fast, lightweight **viewer** for Markdown and PDF documents on Windows, macOS and Linux.
+A fast, lightweight **viewer** for Markdown and PDF documents and pictures on Windows, macOS and Linux.
 Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 
 - **Instant start.** Uses the system web view instead of bundling a browser, so installers are only a few MB.
@@ -18,10 +18,11 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 
 | Area | What you get |
 |---|---|
-| Formats | Markdown and PDF, each a format plugin that can be switched off in Settings |
+| Formats | Markdown, PDF and pictures, each a format plugin that can be switched off in Settings |
 | Markdown | CommonMark + GFM tables, task lists, strikethrough, autolinks, raw HTML (sanitized), GitHub-compatible heading anchors |
 | Plugins | GitHub alerts (`> [!NOTE]`), footnotes, emoji shortcodes, front matter table, syntax highlighting, KaTeX math (`$…$`, `$$…$$`, fenced ```` ```math ````), Mermaid, Graphviz (```` ```dot ````) |
 | PDF | [pdf.js](https://mozilla.github.io/pdf.js/): pages rendered on demand, text selection, internal and external links, outline in the table of contents, find, zoom that re-renders sharply, `#page=N` links from Markdown, printing |
+| Pictures | PNG, JPEG, GIF (animated), WebP, AVIF, BMP, ICO and SVG: the whole picture fits the window at 100 %, zoom and drag to move, a checkerboard shows transparency, size and resolution in the corner; printing at the real size (the dpi stored in PNG and JPEG files, else 96 dpi; SVG by its width and height) or fitted to the paper. Scripts in SVG files do not run |
 | Navigation | Relative links to other `.md` and `.pdf` files open in the same tab; <kbd>Ctrl</kbd>+click or middle click opens a new tab; `#anchors` work across files |
 | Viewing | Zoom per document, separately for the continuous view and the page view (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>); a newly opened document starts at the zoom set in Settings (one value for each view), restored tabs keep theirs; the % button shows the zoom: a click returns to the preset, a double click to 100 %; <kbd>Ctrl</kbd>+<kbd>0</kbd> gives 100 %, and at 100 % the preset, table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
 | Side by side | The ▥ menu shows 2, 3 or 4 documents next to each other (up to 6 via right click on a tab → *Show side by side*); <kbd>Ctrl</kbd>+<kbd>\</kbd> toggles two. Each pane has its own document, scroll position and history; the clicked pane is the active one (toolbar, find, table of contents). Drag the divider to resize, double-click it for equal widths. Panes and widths are restored on the next start |

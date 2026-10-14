@@ -1,11 +1,12 @@
 import { extname } from "../paths";
 import type { Config } from "../state";
+import { imageFormat } from "./image";
 import { markdownFormat } from "./markdown";
 import { pdfFormat } from "./pdf";
 import type { FormatPlugin } from "./types";
 
 /** All document formats in settings order. Add new formats here. */
-export const FORMATS: FormatPlugin[] = [markdownFormat, pdfFormat];
+export const FORMATS: FormatPlugin[] = [markdownFormat, pdfFormat, imageFormat];
 
 export function isFormatEnabled(format: FormatPlugin, config: Config): boolean {
   return config.formats[format.id] ?? format.defaultEnabled;

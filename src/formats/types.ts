@@ -178,6 +178,8 @@ export interface FormatPlugin {
   /** Lower-case file extensions without the dot. */
   extensions: string[];
   defaultEnabled: boolean;
+  /** 100 % fits the content into the window (pictures); the preset zoom of documents does not apply. */
+  fitsWindow?: boolean;
   /** Applies changed settings to all views of this format (they are refreshed afterwards). */
   configure?(config: Config): void;
   createView(host: ViewHost): DocumentView;

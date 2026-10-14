@@ -862,7 +862,11 @@ export class App {
       error = new Error(`No viewer is enabled for .${extname(node.path) || "(no extension)"} files.`);
     } else {
       // Views need to be in the DOM while loading (e.g. PDF layout measures its container).
-      if (!tab.view || tab.format !== format) tab.setView(format.createView(this.viewHost(tab)), format);
+      if (!tab.view || tab.format !== format) {
+        // A picture opened in a new tab starts fitted to the window, not at the preset zoom of documents.
+        if (format.fitsWindow && tab.version === 0) tab.flowScale = 1;
+        tab.setView(format.createView(this.viewHost(tab)), format);
+      }
       try {
         ({ title } = await tab.view!.load(node.path, this.viewContext(tab)));
       } catch (e) {
@@ -1169,6 +1173,7 @@ export class App {
 
   /** The zoom from the settings for the view the tab shows (continuous or page view). */
   private presetZoom(tab: Tab): number {
+    if (tab.format?.fitsWindow && !tab.pageMode) return 1;
     return this.clampZoom((tab.pageMode ? this.config.zoomPages : this.config.zoomContinuous) ?? 1);
   }
 

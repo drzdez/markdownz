@@ -363,6 +363,56 @@ button {
   background: var(--chrome);
 }
 
+/* Pictures: centred on the window, a checkerboard shows transparency. */
+.image-view {
+  background: var(--chrome);
+  overflow: hidden;
+}
+
+.image-scroller {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  display: grid;
+}
+
+.image-stage {
+  margin: auto;
+  padding: 16px;
+}
+
+.image-picture {
+  display: block;
+  background: repeating-conic-gradient(var(--hover) 0 25%, var(--bg) 0 50%) 0 0 / 16px 16px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.image-picture.pixelated {
+  image-rendering: pixelated;
+}
+
+.image-view.panning,
+.image-view.panning .image-picture {
+  cursor: grabbing;
+}
+
+.image-caption {
+  position: absolute;
+  right: 18px;
+  bottom: 14px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--muted);
+  font-size: 12px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+.mdz-image-page {
+  display: block;
+  object-fit: contain;
+}
+
 /* pdf.js find highlights use its own classes; make the current match stand out like in Markdown. */
 .pdf-view .textLayer .highlight.selected {
   background-color: var(--mark-current);
