@@ -121,6 +121,135 @@ async fn open_with(path: String, program: Option<String>, args: Option<Vec<Strin
     }
 }
 
+/// An application the system recommends for a file ("Open with" in the file manager).
+#[derive(serde::Serialize)]
+struct AssocApp {
+    /// What `open_with_app` takes back: the shell's name of the handler.
+    id: String,
+    name: String,
+}
+
+/// Applications the system recommends for `path`, without Markdownz itself
+/// (Windows; elsewhere the system chooser lists them).
+#[tauri::command]
+async fn open_with_apps(path: String) -> Result<Vec<AssocApp>, String> {
+    #[cfg(windows)]
+    {
+        let file = dunce::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
+        let own = std::env::current_exe().ok().and_then(|p| dunce::canonicalize(p).ok());
+        tauri::async_runtime::spawn_blocking(move || assoc::apps(&file, own.as_deref()))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = path;
+        Ok(Vec::new())
+    }
+}
+
+/// Opens `path` in an application from `open_with_apps`.
+#[tauri::command]
+async fn open_with_app(path: String, id: String) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        let file = dunce::canonicalize(&path).map_err(|e| format!("{path}: {e}"))?;
+        if !file.is_file() {
+            return Err(format!("{path}: not a file"));
+        }
+        tauri::async_runtime::spawn_blocking(move || assoc::open(&file, &id))
+            .await
+            .map_err(|e| e.to_string())?
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = (path, id);
+        Err("not supported on this platform".into())
+    }
+}
+
+#[cfg(windows)]
+mod assoc {
+    //! The shell's association handlers: the apps of Explorer's "Open with" submenu.
+    use super::AssocApp;
+    use std::path::Path;
+    use windows::core::{HSTRING, PWSTR};
+    use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, CoUninitialize, IDataObject, COINIT_APARTMENTTHREADED};
+    use windows::Win32::UI::Shell::{IAssocHandler, IShellItem, SHAssocEnumHandlers, SHCreateItemFromParsingName, ASSOC_FILTER_RECOMMENDED, BHID_DataObject};
+
+    /// COM for the current (blocking pool) thread, for as long as the guard lives.
+    struct Com;
+    impl Com {
+        fn init() -> Result<Self, String> {
+            unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) }.ok().map_err(|e| e.to_string())?;
+            Ok(Com)
+        }
+    }
+    impl Drop for Com {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+
+    fn take(p: PWSTR) -> String {
+        let s = unsafe { p.to_string() }.unwrap_or_default();
+        unsafe { CoTaskMemFree(Some(p.0 as _)) };
+        s
+    }
+
+    fn handlers(file: &Path) -> Result<Vec<(String, String, IAssocHandler)>, String> {
+        let ext = file.extension().map(|e| format!(".{}", e.to_string_lossy())).ok_or("the file has no extension")?;
+        let list = unsafe { SHAssocEnumHandlers(&HSTRING::from(ext), ASSOC_FILTER_RECOMMENDED) }.map_err(|e| e.to_string())?;
+        let mut out = Vec::new();
+        loop {
+            let mut one = [None];
+            let mut fetched = 0;
+            if unsafe { list.Next(&mut one, Some(&mut fetched)) }.is_err() || fetched == 0 {
+                break;
+            }
+            let Some(handler) = one[0].take() else { break };
+            let id = unsafe { handler.GetName() }.map(take).unwrap_or_default();
+            let name = unsafe { handler.GetUIName() }.map(take).unwrap_or_default();
+            if !id.is_empty() && !name.is_empty() {
+                out.push((id, name, handler));
+            }
+        }
+        Ok(out)
+    }
+
+    /// The program file name of a handler, lower case ("excel.exe").
+    fn program(id: &str) -> String {
+        Path::new(id).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default()
+    }
+
+    /// Without `own` (Markdownz, installed or not); a name that is only the
+    /// program's path (some apps register no display name) becomes its file stem.
+    pub fn apps(file: &Path, own: Option<&Path>) -> Result<Vec<AssocApp>, String> {
+        let _com = Com::init()?;
+        let own = own.map(|p| program(&p.to_string_lossy()));
+        Ok(handlers(file)?
+            .into_iter()
+            .filter(|(id, _, _)| own.as_deref() != Some(program(id).as_str()))
+            .map(|(id, name, _)| {
+                let stem = Path::new(&id).file_stem().map(|s| s.to_string_lossy().into_owned());
+                let name = match stem {
+                    Some(stem) if name.eq_ignore_ascii_case(&id) => stem,
+                    _ => name,
+                };
+                AssocApp { id, name }
+            })
+            .collect())
+    }
+
+    pub fn open(file: &Path, id: &str) -> Result<(), String> {
+        let _com = Com::init()?;
+        let (_, _, handler) = handlers(file)?.into_iter().find(|(h, _, _)| h == id).ok_or("the application is no longer registered for this file type")?;
+        let item: IShellItem = unsafe { SHCreateItemFromParsingName(&HSTRING::from(file.as_os_str()), None) }.map_err(|e| e.to_string())?;
+        let data: IDataObject = unsafe { item.BindToHandler(None, &BHID_DataObject) }.map_err(|e| e.to_string())?;
+        unsafe { handler.Invoke(&data) }.map_err(|e| e.to_string())
+    }
+}
+
 /// Opens a directory in the default file manager. Only existing directories are
 /// accepted, so this can never launch a program.
 #[tauri::command]
@@ -189,10 +318,12 @@ fn update_mode() -> &'static str {
 
 #[cfg(windows)]
 async fn choose_application(file: &Path) -> Result<(), String> {
-    // The shell's "How do you want to open this file?" dialog.
+    use std::os::windows::process::CommandExt;
+    // The shell's "How do you want to open this file?" dialog. OpenAs_RunDLL takes
+    // the rest of the command line as the path, so it must not be quoted.
     std::process::Command::new("rundll32.exe")
-        .arg("shell32.dll,OpenAs_RunDLL")
-        .arg(file)
+        .raw_arg("shell32.dll,OpenAs_RunDLL")
+        .raw_arg(file)
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -378,6 +509,8 @@ pub fn run() {
             resolve_path,
             read_binary,
             open_with,
+            open_with_apps,
+            open_with_app,
             open_folder,
             update_mode,
             watch_docs,
@@ -411,6 +544,21 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn lists_recommended_apps_without_markdownz() {
+        // Every Windows installation has Notepad for .txt.
+        let dir = std::env::temp_dir().join("markdownz test assoc");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.txt");
+        std::fs::write(&file, "x").unwrap();
+        let apps = assoc::apps(&file, None).unwrap();
+        assert!(apps.iter().any(|a| a.id.to_lowercase().ends_with("notepad.exe") || a.name.contains("Notepad")), "{:?}", apps.iter().map(|a| &a.name).collect::<Vec<_>>());
+        let notepad = apps.iter().find(|a| a.name.contains("Notepad")).map(|a| a.id.clone());
+        let without = assoc::apps(&file, notepad.as_deref().map(Path::new)).unwrap();
+        assert_eq!(without.len() + 1, apps.len());
+    }
 
     #[test]
     fn args_keep_only_existing_files() {

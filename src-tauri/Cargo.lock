@@ -2184,6 +2184,7 @@ dependencies = [
  "tauri-plugin-single-instance",
  "tauri-plugin-updater",
  "tauri-plugin-window-state",
+ "windows 0.62.2",
 ]
 
 [[package]]

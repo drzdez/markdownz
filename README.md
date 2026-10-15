@@ -35,7 +35,7 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 | Page view | *Pages as printed* (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> or the ▥ menu) shows the document laid out with the current print settings (paper, pages per sheet, booklet, orientation, margins, scale, frames) instead of continuous text; 1–4 sheets per row or as many as fit, zoom works as usual, changes in the print dialog apply at once. Find and the outline work in the continuous view |
 | Printing | Own print dialog with preview (<kbd>Ctrl</kbd>+<kbd>P</kbd> or ⎙): 1/2/4 pages per sheet, orientation by page or fixed, scale, alignment, margins, page frames, booklet (pages reordered for folding), two-sided via the printer or manually in two passes, page ranges, A4/Letter; paper is always light, Markdown is paginated between blocks |
 | Recent documents | Listed on the start page and in the **+** menu with the time they were last viewed; up to 100 entries, scrollable; when a clicked document no longer exists, Markdownz says so and checks only the entries visible in that list at the moment and shows missing ones as *deleted* (struck through); they stay in the list and open again if the file comes back. The folder icon next to each entry shows the file in Explorer / the default file manager |
-| Open with | Menu (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>, the ↗ button or right click on a tab): the system "choose an application" dialog, your own applications from `config.json`, show in folder, copy path |
+| Open with | Menu (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>O</kbd>, the ↗ button or right click on a tab): the applications Windows recommends for the file type, the system "choose an application" dialog, your own applications from `config.json`, show in folder, copy path |
 | Integration | `.md` and `.pdf` file associations, single instance (opening another file adds a tab), drag and drop, command line `markdownz file.md …` |
 
 Try [`samples/demo.md`](samples/demo.md) for a tour of everything.
@@ -164,7 +164,7 @@ The installers register Markdownz for Markdown files (`.md`, `.markdown`, …) a
 
 ### Open with other applications
 
-**Open with…** shows the system chooser on Windows and Linux (via xdg-desktop-portal, also inside Flatpak) and an application picker on macOS. Frequently used applications can be added to the menu in `config.json` (location below):
+On Windows the menu lists the applications the system recommends for the file type (as Explorer's *Open with* submenu does, e.g. Excel for `.xlsx`). **Open with…** shows the system chooser on Windows and Linux (via xdg-desktop-portal, also inside Flatpak) and an application picker on macOS. Frequently used applications can be added to the menu in `config.json` (location below):
 
 ```json
 {

@@ -376,7 +376,8 @@ export class App {
     this.scheduleSave();
   }
 
-  private showTabMenu(tab: Tab, x: number, y: number): void {
+  private async showTabMenu(tab: Tab, x: number, y: number): Promise<void> {
+    const apps = await this.systemApps(tab.path);
     const index = this.tabs.indexOf(tab);
     const last = this.tabs.length - 1;
     const shown = this.panes.includes(tab);
@@ -397,7 +398,7 @@ export class App {
       { label: "Reopen closed tab", hint: "Ctrl+Shift+T", disabled: !this.session.closed.length, action: () => this.reopenClosed() },
       null,
       { label: "Print…", hint: "Ctrl+P", disabled: tab !== this.active || !tab.view?.printPages, action: () => this.print() },
-      ...this.openWithItems(tab.path, false),
+      ...this.openWithItems(tab.path, apps, false),
     ]);
   }
 
@@ -416,13 +417,21 @@ export class App {
     );
   }
 
+  /** Applications the system recommends for the file (Windows); none when it cannot tell. */
+  private systemApps(path: string): Promise<backend.AssocApp[]> {
+    return backend.openWithApps(path).catch(() => []);
+  }
+
   /** "Open with" entries for editors and advanced tools; Markdownz itself stays a viewer. */
-  private openWithItems(path: string, copy = true): MenuItem[] {
+  private openWithItems(path: string, system: backend.AssocApp[], copy = true): MenuItem[] {
     const ext = extname(path);
     const run = (action: () => Promise<void>) => () => void action().catch((e) => toast(`Cannot open: ${e}`));
     const apps = this.config.openWith.filter((a) => !a.extensions?.length || a.extensions.includes(ext));
     return [
       ...apps.map((app) => ({ label: `Open in ${app.name}`, action: run(() => backend.openWith(path, app.program, app.args)) })),
+      ...system
+        .filter((app) => !apps.some((a) => a.name === app.name))
+        .map((app) => ({ label: `Open in ${app.name}`, action: run(() => backend.openWithApp(path, app.id)) })),
       {
         label: "Open with…",
         hint: "Ctrl+Shift+O",
@@ -442,12 +451,13 @@ export class App {
     ];
   }
 
-  private showOpenWithMenu(): void {
+  private async showOpenWithMenu(): Promise<void> {
     const tab = this.active;
     if (!tab) return;
+    const apps = await this.systemApps(tab.path);
     const anchor = this.tabbar.querySelector<HTMLElement>(".open-with")?.getBoundingClientRect();
     showContextMenu(anchor ? anchor.right - 220 : 40, anchor ? anchor.bottom + 4 : 40, [
-      ...this.openWithItems(tab.path),
+      ...this.openWithItems(tab.path, apps),
       null,
       { label: "Print…", hint: "Ctrl+P", disabled: !tab.view?.printPages, action: () => this.print() },
     ]);
@@ -1363,7 +1373,7 @@ export class App {
     };
     const branches = tab?.history.current.children.length ?? 0;
     const forward = button(branches > 1 ? `→${branches}` : "→", branches > 1 ? `Forward (${branches} branches) — Alt+→` : "Forward — Alt+→", () => void this.forward(), !branches);
-    const openWith = button("↗", "Open with… — Ctrl+Shift+O", () => this.showOpenWithMenu(), !tab);
+    const openWith = button("↗", "Open with… — Ctrl+Shift+O", () => void this.showOpenWithMenu(), !tab);
     openWith.classList.add("open-with");
 
     const split = this.panes.length > 1;
@@ -1386,7 +1396,7 @@ export class App {
       item.addEventListener("contextmenu", (e) => {
         e.preventDefault();
         e.stopPropagation();
-        this.showTabMenu(t, e.clientX, e.clientY);
+        void this.showTabMenu(t, e.clientX, e.clientY);
       });
       item.addEventListener("pointerdown", (e) => {
         if (e.button === 0 && !(e.target as Element).closest(".tab-close")) this.startTabDrag(t, item, e);
@@ -1544,7 +1554,7 @@ export class App {
       else if (key === "-" || e.code === "NumpadSubtract") this.applyZoom((this.active?.scale ?? 1) / 1.1);
       else if (key === "0" || e.code === "Numpad0") this.resetZoom();
       else if (key === "t" && e.shiftKey) this.reopenClosed();
-      else if (key === "o" && e.shiftKey) this.showOpenWithMenu();
+      else if (key === "o" && e.shiftKey) void this.showOpenWithMenu();
       else if (key === "o" || key === "t") void this.openDialog();
       else if (key === "w") this.closeTab(this.active);
       else if (key === "tab") this.cycle(e.shiftKey ? -1 : 1);

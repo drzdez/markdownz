@@ -48,6 +48,22 @@ export async function openWith(path: string, program?: string, args?: string[]):
   if (inTauri) await invoke("open_with", { path, program: program ?? null, args: args ?? null });
 }
 
+/** An application the system recommends for a file. */
+export interface AssocApp {
+  id: string;
+  name: string;
+}
+
+/** Applications the system recommends for `path` ("Open with" in the file manager); Windows only. */
+export async function openWithApps(path: string): Promise<AssocApp[]> {
+  return inTauri ? invoke<AssocApp[]>("open_with_apps", { path }) : [];
+}
+
+/** Opens `path` in an application from `openWithApps`. */
+export async function openWithApp(path: string, id: string): Promise<void> {
+  if (inTauri) await invoke("open_with_app", { path, id });
+}
+
 export async function watchDocs(paths: string[]): Promise<void> {
   if (inTauri) await invoke("watch_docs", { paths });
 }
