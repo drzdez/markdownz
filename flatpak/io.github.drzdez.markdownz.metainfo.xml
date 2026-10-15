@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.8" date="2026-10-15">
+      <description>
+        <p>On Windows the Open with menu lists the applications the system recommends for the file, for example Excel for Excel files. The system "Open with" dialog now opens for files whose path contains a space.</p>
+      </description>
+    </release>
     <release version="0.4.7" date="2026-10-15">
       <description>
         <p>Plugins for more formats, downloaded only when you choose them: DXF drawings, 3D models (STL, 3MF, OBJ, PLY, glTF), TIFF pictures, Word and Excel files. Install them in Settings → Plugins, when you open such a file, or on the Plugins page of the Windows installer; remove them at any time.</p>
