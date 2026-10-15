@@ -89,7 +89,10 @@ class MarkdownView implements DocumentView {
     change: changeWidths,
   });
 
-  constructor(host: ViewHost) {
+  constructor(
+    host: ViewHost,
+    private toMarkdown?: ToMarkdown,
+  ) {
     this.element.addEventListener("scroll", () => host.onScroll());
     this.element.addEventListener("click", (e) => {
       const target = e.target as Element;
@@ -175,9 +178,14 @@ class MarkdownView implements DocumentView {
   }
 
   async load(path: string, ctx: ViewContext): Promise<{ title?: string }> {
-    const doc = await backend.readDoc(path);
-    this.path = doc.path;
-    this.source = doc.content;
+    if (this.toMarkdown) {
+      this.path = path;
+      this.source = this.toMarkdown(decodeText(await backend.readBinary(path)), path);
+    } else {
+      const doc = await backend.readDoc(path);
+      this.path = doc.path;
+      this.source = doc.content;
+    }
     await this.refresh(ctx);
     return { title: this.article?.querySelector("h1")?.textContent?.trim() || undefined };
   }
@@ -317,6 +325,7 @@ export const markdownFormat: FormatPlugin = {
   description: ".md, .markdown and similar, with the extensions below",
   extensions: ["md", "markdown", "mdown", "mkd", "mkdn", "mdwn", "mdtxt", "mdtext"],
   defaultEnabled: true,
+  markersInFile: true,
   configure(config) {
     pluginSettings = config.plugins;
     exceptions = config.pageExceptions ?? {};
@@ -336,3 +345,18 @@ export const markdownFormat: FormatPlugin = {
   },
   createView: (host) => new MarkdownView(host),
 };
+
+/** Turns the text of a file into Markdown for formats shown by the Markdown view. */
+export type ToMarkdown = (text: string, path: string) => string;
+
+/** A Markdown view for a file of another format, turned into Markdown when loaded. */
+export function createMarkdownView(host: ViewHost, toMarkdown: ToMarkdown): DocumentView {
+  return new MarkdownView(host, toMarkdown);
+}
+
+/** Text of a file: UTF-8, or UTF-16 with a byte order mark (common for Windows logs and scripts). */
+export function decodeText(data: Uint8Array): string {
+  if (data[0] === 0xff && data[1] === 0xfe) return new TextDecoder("utf-16le").decode(data.subarray(2));
+  if (data[0] === 0xfe && data[1] === 0xff) return new TextDecoder("utf-16be").decode(data.subarray(2));
+  return new TextDecoder("utf-8").decode(data[0] === 0xef && data[1] === 0xbb && data[2] === 0xbf ? data.subarray(3) : data);
+}

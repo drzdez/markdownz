@@ -5,9 +5,19 @@ import { full as emoji } from "markdown-it-emoji";
 import frontMatter from "markdown-it-front-matter";
 import { parse as parseYaml } from "yaml";
 import hljs from "highlight.js/lib/common";
+import dockerfile from "highlight.js/lib/languages/dockerfile";
+import dos from "highlight.js/lib/languages/dos";
+import fsharp from "highlight.js/lib/languages/fsharp";
+import powershell from "highlight.js/lib/languages/powershell";
 import type { MarkdownIt } from "markdown-it";
 import type { ViewerPlugin } from "../types";
 import { escapeHtml } from "../types";
+
+// Scripts and files of Windows and .NET, beyond the common languages (Markdown code blocks and the text format).
+hljs.registerLanguage("powershell", powershell);
+hljs.registerLanguage("dos", dos);
+hljs.registerLanguage("dockerfile", dockerfile);
+hljs.registerLanguage("fsharp", fsharp);
 
 export const alertsPlugin: ViewerPlugin = {
   id: "alerts",

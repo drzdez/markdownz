@@ -178,6 +178,10 @@ export interface FormatPlugin {
   /** Lower-case file extensions without the dot. */
   extensions: string[];
   defaultEnabled: boolean;
+  /** Whole file names it shows besides extensions, lower-case (Makefile, .gitignore). */
+  fileNames?: string[];
+  /** Orientation markers can be written into its files (Markdown). */
+  markersInFile?: boolean;
   /** 100 % fits the content into the window (pictures); the preset zoom of documents does not apply. */
   fitsWindow?: boolean;
   /** Applies changed settings to all views of this format (they are refreshed afterwards). */

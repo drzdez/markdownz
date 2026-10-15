@@ -1,6 +1,6 @@
 # Markdownz
 
-A fast, lightweight **viewer** for Markdown and PDF documents and pictures on Windows, macOS and Linux.
+A fast, lightweight **viewer** for Markdown and PDF documents, pictures, text and code, CSV tables, diagrams and Jupyter notebooks on Windows, macOS and Linux.
 Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 
 - **Instant start.** Uses the system web view instead of bundling a browser, so installers are only a few MB.
@@ -18,11 +18,15 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 
 | Area | What you get |
 |---|---|
-| Formats | Markdown, PDF and pictures, each a format plugin that can be switched off in Settings |
+| Formats | Markdown, PDF, pictures, text and code, CSV, diagram sources and Jupyter notebooks, each a format plugin that can be switched off in Settings |
 | Markdown | CommonMark + GFM tables, task lists, strikethrough, autolinks, raw HTML (sanitized), GitHub-compatible heading anchors |
 | Plugins | GitHub alerts (`> [!NOTE]`), footnotes, emoji shortcodes, front matter table, syntax highlighting, KaTeX math (`$…$`, `$$…$$`, fenced ```` ```math ````), Mermaid, Graphviz (```` ```dot ````) |
 | PDF | [pdf.js](https://mozilla.github.io/pdf.js/): pages rendered on demand, text selection, internal and external links, outline in the table of contents, find, zoom that re-renders sharply, `#page=N` links from Markdown, printing |
 | Pictures | PNG, JPEG, GIF (animated), WebP, AVIF, BMP, ICO and SVG: the whole picture fits the window at 100 %, zoom and drag to move, a checkerboard shows transparency, size and resolution in the corner; printing at the real size (the dpi stored in PNG and JPEG files, else 96 dpi; SVG by its width and height) or fitted to the paper. Scripts in SVG files do not run |
+| Text and code | Plain text, logs, JSON, YAML, TOML, INI, XML, HTML source, CSS, scripts (PowerShell, batch, shell) and source code of common languages, with colours; Makefile, Dockerfile, .gitignore by name. UTF-8 or UTF-16 with a byte order mark. Nothing is ever run; files over 8 MB show their beginning |
+| CSV | `.csv`, `.tsv`: comma, semicolon or tab found by itself, quoted fields with line breaks, the first row as the header, numbers aligned right; wide tables print like tables in Markdown (landscape pages, repeated header) |
+| Diagram sources | Mermaid (`.mmd`) and Graphviz (`.dot`, `.gv`) files drawn as diagrams |
+| Jupyter notebooks | `.ipynb` with Markdown cells, code with colours and the saved outputs (text, tables, pictures, errors); nothing is run |
 | Navigation | Relative links to other `.md` and `.pdf` files open in the same tab; <kbd>Ctrl</kbd>+click or middle click opens a new tab; `#anchors` work across files |
 | Viewing | Zoom per document, separately for the continuous view and the page view (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>); a newly opened document starts at the zoom set in Settings (one value for each view), restored tabs keep theirs; the % button shows the zoom: a click returns to the preset, a double click to 100 %; <kbd>Ctrl</kbd>+<kbd>0</kbd> gives 100 %, and at 100 % the preset, table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
 | Side by side | The ▥ menu shows 2, 3 or 4 documents next to each other (up to 6 via right click on a tab → *Show side by side*); <kbd>Ctrl</kbd>+<kbd>\</kbd> toggles two. Each pane has its own document, scroll position and history; the clicked pane is the active one (toolbar, find, table of contents). Drag the divider to resize, double-click it for equal widths. Panes and widths are restored on the next start |
@@ -94,7 +98,7 @@ All of them apply to the whole document; single pages can be turned by exception
 **Turning single pages.** Exceptions belong to a block of content (a table, a paragraph), never to a page number, because pages move whenever the text or the settings change. Highest priority first:
 
 1. **Your exception** on this computer: right-click a block (continuous view) or a page (page view) → *Landscape page* / *Portrait page* / *Automatic*. Stored in Markdownz's config for the document's full path, so it also works for read-only files. It is tied to the block by the nearest heading and a hash of the block's beginning: edits elsewhere keep it, and when the block itself changes the page view says so and offers to remove it. Exceptions of documents not opened for 180 days are dropped.
-2. **A marker in the file**, an HTML comment on a line of its own (invisible on GitHub and in other viewers): `<!-- markdownz: landscape -->` or `<!-- markdownz: portrait -->` for the next block, `<!-- markdownz: landscape start -->` … `<!-- markdownz: landscape end -->` for a range, `<!-- markdownz: page break -->`. The page menu can copy a marker to paste in an editor.
+2. **A marker in the file**, an HTML comment on a line of its own (invisible on GitHub and in other viewers): `<!-- markdownz: landscape -->` or `<!-- markdownz: portrait -->` for the next block, `<!-- markdownz: landscape start -->` … `<!-- markdownz: landscape end -->` for a range, `<!-- markdownz: page break -->`. The page menu can copy a marker to paste in an editor. Markers exist only in Markdown files; CSV, code and notebooks use your exceptions.
 3. **The print settings** (*Wide tables*). Whatever turns a page, a table still too wide for it shrinks down to the smallest table text and then continues below or is cut off, as set.
 
 **Seeing and moving them.** With *Show orientation marks* (▥ menu, on by default) the continuous view and the page view show where every marker sits in the file (a label) and which blocks it affects (a bracket in the left margin), with the same buttons in both; marks are never printed and never found by Ctrl+F. Right click on a block (continuous view) or on a page (page view) opens the same menu: your exception (landscape / portrait / automatic), *Add landscape / portrait marker / page break above* the block (written into the file), copy a marker, print settings.

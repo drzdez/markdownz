@@ -713,6 +713,8 @@ export class App {
     const yours = (o: Orientation) =>
       target.marker && target.marker !== o ? `Your exception, overrides the ${target.marker} marker in the file` : "Your exception, saved on this computer";
     const automatic = target.marker ?? target.automatic;
+    // Markers are written only into Markdown files; other formats shown as Markdown keep your exceptions.
+    const inFile = !!tab.format?.markersInFile;
     const copy = (o: Orientation) => () => {
       void navigator.clipboard.writeText(`<!-- markdownz: ${o} -->`);
       toast(`Marker copied. Paste it on its own line right above the ${target.label.split(" ")[0]} in the .md file (Open with… to edit).`);
@@ -738,7 +740,7 @@ export class App {
     // Markers written into the file, above the block (the same as the marks' buttons do).
     const add = (value: string) => () => void this.markAction(tab, { type: "insert", before: target.line, text: `<!-- markdownz: ${value} -->` });
     const above = `Writes a line into the .md file right above ${target.label}`;
-    if (target.line >= 0) {
+    if (target.line >= 0 && inFile) {
       items.push(
         null,
         { label: "Add landscape marker above", detail: above, disabled: !target.turnable, action: add("landscape") },
@@ -746,10 +748,15 @@ export class App {
         { label: "Add page break above", detail: above, action: add("page break") },
       );
     }
+    if (inFile) {
+      items.push(
+        null,
+        { label: "Copy landscape marker", detail: "<!-- markdownz: landscape --> for the .md file; travels with the document", action: copy("landscape") },
+        { label: "Copy portrait marker", detail: "<!-- markdownz: portrait -->; your exception here still wins over it", action: copy("portrait") },
+      );
+    }
     items.push(
       null,
-      { label: "Copy landscape marker", detail: "<!-- markdownz: landscape --> for the .md file; travels with the document", action: copy("landscape") },
-      { label: "Copy portrait marker", detail: "<!-- markdownz: portrait -->; your exception here still wins over it", action: copy("portrait") },
       { label: "Print settings…", detail: "Wide tables, smallest text, table headers", action: () => this.print() },
     );
     showContextMenu(x, y, items);
@@ -951,6 +958,10 @@ export class App {
       all[tab.path] = { used: Date.now(), items };
       void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(tab.path));
       toast(`Your exception moved to ${action.label}.`);
+      return;
+    }
+    if (!tab.format?.markersInFile) {
+      toast("Markers are written only into Markdown files; right-click the block for your exception instead.", "warning");
       return;
     }
     let before: string;

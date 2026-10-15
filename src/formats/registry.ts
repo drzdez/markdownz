@@ -1,12 +1,13 @@
-import { extname } from "../paths";
+import { basename, extname } from "../paths";
 import type { Config } from "../state";
+import { csvFormat, diagramFormat, notebookFormat, textFormat } from "./converted";
 import { imageFormat } from "./image";
 import { markdownFormat } from "./markdown";
 import { pdfFormat } from "./pdf";
 import type { FormatPlugin } from "./types";
 
 /** All document formats in settings order. Add new formats here. */
-export const FORMATS: FormatPlugin[] = [markdownFormat, pdfFormat, imageFormat];
+export const FORMATS: FormatPlugin[] = [markdownFormat, pdfFormat, imageFormat, textFormat, csvFormat, diagramFormat, notebookFormat];
 
 export function isFormatEnabled(format: FormatPlugin, config: Config): boolean {
   return config.formats[format.id] ?? format.defaultEnabled;
@@ -15,7 +16,8 @@ export function isFormatEnabled(format: FormatPlugin, config: Config): boolean {
 /** The enabled format that can show `path`, or null. */
 export function formatFor(path: string, config: Config): FormatPlugin | null {
   const ext = extname(path);
-  return FORMATS.find((f) => f.extensions.includes(ext) && isFormatEnabled(f, config)) ?? null;
+  const name = basename(path).toLowerCase();
+  return FORMATS.find((f) => (f.extensions.includes(ext) || f.fileNames?.includes(name)) && isFormatEnabled(f, config)) ?? null;
 }
 
 /** File dialog filters for the enabled formats. */
