@@ -45,6 +45,8 @@ export interface Config {
   lastUpdateCheck?: number;
   /** Version the user chose to skip. */
   skippedVersion?: string;
+  /** Last version whose release notes were shown ("What's new" after an install or update). */
+  seenVersion?: string;
 }
 
 /** Open tabs etc., stored as `session.json`; restored on the next start. */

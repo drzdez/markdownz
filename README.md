@@ -41,7 +41,7 @@ Try [`samples/demo.md`](samples/demo.md) for a tour of everything.
 
 ## Keyboard shortcuts
 
-On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Press <kbd>F1</kbd> in the app for this list.
+On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Press <kbd>F1</kbd> in the app for this list; its *About* tab shows the version and the release notes, and after an install or an update the app shows once what is new.
 
 | Keys | Action |
 |---|---|
@@ -202,6 +202,8 @@ Releases are built by GitHub Actions: push a tag such as `v0.1.0`, and [`release
 ### Updates
 
 The app checks `https://github.com/drzdez/markdownz/releases/latest/download/latest.json` at start, at most once a day (Settings → Updates, also *Check now*), and offers to install a newer version (*Install now / Later / Skip this version*). Updates are signed: the release workflow needs the secrets `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` (created with `npx tauri signer generate`); the public key is in `tauri.conf.json`. Only published releases count as "latest". Flatpak, `.deb` and `.rpm` installations are updated by their package manager, so the app only points to the download page there.
+
+Release notes live in one place, the `<releases>` of `flatpak/io.github.drzdez.markdownz.metainfo.xml`: the app shows them (*What's new*, Help → About), and a unit test fails when the version in `package.json` has no entry there yet.
 
 Local `npm run tauri build` also signs the updater artifacts, so set the same two variables first (or the build fails at the signing step).
 

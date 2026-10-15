@@ -1,3 +1,6 @@
+/** Version from package.json, set by vite.config.ts. */
+declare const __APP_VERSION__: string;
+
 // Type shims for markdown-it plugins that ship without TypeScript declarations.
 declare module "markdown-it-footnote" {
   import type { MarkdownIt } from "markdown-it";

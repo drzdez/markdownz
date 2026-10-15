@@ -1,6 +1,7 @@
 import type { HistoryNode, HistoryTree } from "../history";
 import { basename } from "../paths";
 import { FORMATS, isFormatEnabled } from "../formats/registry";
+import { APP_VERSION, RELEASES, type Release } from "../releaseNotes";
 import { PLUGINS, isEnabled } from "../render/renderer";
 import type { Config, ThemeSetting } from "../state";
 import { el, openModal } from "./overlay";
@@ -205,11 +206,77 @@ const SHORTCUTS: [string, string][] = [
   ["F1", "This help"],
 ];
 
-export function showHelp(): void {
+const PROJECT_URL = "https://github.com/drzdez/markdownz";
+
+export type HelpSection = "shortcuts" | "about";
+
+/** Help (F1): keyboard shortcuts, and About with the version and the release notes. */
+export function showHelp(openUrl: (url: string) => void, section: HelpSection = "shortcuts"): void {
   const mac = navigator.userAgent.includes("Mac");
   const table = el("table", { className: "mdz-shortcuts" });
   for (const [keys, action] of SHORTCUTS) {
     table.append(el("tr", {}, el("td", {}, el("kbd", { textContent: mac ? keys.replace(/Ctrl/g, "⌘").replace(/Alt/g, "⌥") : keys })), el("td", { textContent: action })));
   }
-  openModal("Keyboard shortcuts", table, { className: "wide" });
+  const link = (text: string, url: string) => {
+    const a = el("a", { href: url, textContent: text });
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      openUrl(url);
+    });
+    return a;
+  };
+  const about = el(
+    "div",
+    { className: "mdz-about" },
+    el("p", {}, el("strong", { textContent: `Markdownz ${APP_VERSION}` })),
+    el("p", { textContent: "Viewer for Markdown, PDF, pictures, code, CSV, diagrams and notebooks, with tabs, history and printing." }),
+    el("p", {}, link("Project page", PROJECT_URL), " · ", link("Downloads", `${PROJECT_URL}/releases`), " · MIT License, © 2026 drzdez"),
+    el("h3", { textContent: "Release notes" }),
+    releaseList(RELEASES),
+  );
+  const panels: Record<HelpSection, HTMLElement> = { shortcuts: table, about };
+  const tabs = el("div", { className: "mdz-help-tabs" });
+  tabs.setAttribute("role", "tablist");
+  const select = (name: HelpSection) => {
+    for (const [key, panel] of Object.entries(panels)) panel.hidden = key !== name;
+    for (const b of tabs.children) b.setAttribute("aria-selected", String((b as HTMLElement).dataset.section === name));
+  };
+  for (const [name, label] of [["shortcuts", "Keyboard shortcuts"], ["about", "About"]] as [HelpSection, string][]) {
+    const b = el("button", { textContent: label });
+    b.setAttribute("role", "tab");
+    b.dataset.section = name;
+    b.addEventListener("click", () => select(name));
+    tabs.append(b);
+  }
+  select(section);
+  openModal("Help", el("div", {}, tabs, table, about), { className: "wide" });
+}
+
+/** Versions with their date and notes, newest first. */
+function releaseList(releases: Release[]): HTMLElement {
+  const list = el("div", { className: "mdz-releases" });
+  for (const r of releases) {
+    const date = r.date ? new Date(`${r.date}T12:00`).toLocaleDateString(undefined, { dateStyle: "medium" }) : "";
+    list.append(
+      el("h4", {}, `${r.version}${r.version === APP_VERSION ? " (this version)" : ""}`, el("span", { className: "mdz-hint", textContent: date })),
+      ...r.paragraphs.map((p) => el("p", { textContent: p })),
+    );
+  }
+  return list;
+}
+
+/** "What's new" after an install or an update: the notes of the versions not seen yet. */
+export function showWhatsNew(releases: Release[], openAll: () => void): void {
+  const all = el("button", { textContent: "All release notes" });
+  const ok = el("button", { className: "primary", textContent: "OK", autofocus: true });
+  const layer = openModal(
+    `What's new in Markdownz ${APP_VERSION}`,
+    el("div", {}, releaseList(releases), el("div", { className: "mdz-print-buttons" }, all, el("span", { className: "spacer" }), ok)),
+    { className: "wide" },
+  );
+  ok.addEventListener("click", () => layer.close());
+  all.addEventListener("click", () => {
+    layer.close();
+    openAll();
+  });
 }

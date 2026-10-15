@@ -1514,3 +1514,56 @@ kbd {
     padding: 0;
   }
 }
+
+/* ------------------------------------------------------------ help, about, release notes */
+
+.mdz-help-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mdz-help-tabs button {
+  padding: 6px 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mdz-help-tabs button[aria-selected="true"] {
+  border-bottom-color: var(--accent);
+  color: var(--fg);
+}
+
+.mdz-about p {
+  margin: 0 0 8px;
+}
+
+.mdz-about a {
+  color: var(--accent);
+}
+
+.mdz-about h3 {
+  margin: 16px 0 4px;
+  font-size: 14px;
+}
+
+.mdz-releases h4 {
+  display: flex;
+  align-items: baseline;
+  margin: 12px 0 4px;
+  font-size: 13px;
+}
+
+.mdz-releases p {
+  margin: 0 0 6px;
+  line-height: 1.45;
+}
+
+.mdz-releases + .mdz-print-buttons {
+  margin-top: 16px;
+}

@@ -17,7 +17,8 @@ import { pruneExceptions, sameAnchor, type BlockAnchor, type LocalException } fr
 import { insertLine, isMarkerLine, moveLine, onlyMarkersChanged, removeLine, replaceLine } from "./print/markerEdit";
 import { setGhost, type MarkAction } from "./ui/orientationMarks";
 import type { OrientationTarget } from "./formats/types";
-import { pickForward, showHelp, showHistoryTree, showSettings } from "./ui/dialogs";
+import { APP_VERSION, RELEASES, releasesSince } from "./releaseNotes";
+import { pickForward, showHelp, showHistoryTree, showSettings, showWhatsNew, type HelpSection } from "./ui/dialogs";
 import { PageView, pageViewKey, type PageColumns } from "./ui/pageView";
 import { openPrintDialog } from "./ui/printDialog";
 import { Finder } from "./ui/find";
@@ -182,7 +183,22 @@ export class App {
     else if (restored) await this.activate(restored);
     else this.showWelcome();
     await backend.showWindow();
-    if (this.config.checkUpdates && shouldCheck(this.config.lastUpdateCheck, Date.now())) void this.checkUpdates(false);
+    if (!this.showNewReleases() && this.config.checkUpdates && shouldCheck(this.config.lastUpdateCheck, Date.now())) void this.checkUpdates(false);
+  }
+
+  private help(section?: HelpSection): void {
+    showHelp((url) => void backend.openExternal(url), section);
+  }
+
+  /** Release notes once after an install or an update; true when shown. */
+  private showNewReleases(): boolean {
+    if (!backend.inTauri || this.config.seenVersion === APP_VERSION) return false;
+    const releases = releasesSince(RELEASES, this.config.seenVersion, APP_VERSION);
+    this.config = { ...this.config, seenVersion: APP_VERSION };
+    void backend.saveState("config", this.config);
+    if (!releases.length) return false;
+    showWhatsNew(releases, () => this.help("about"));
+    return true;
   }
 
   /**
@@ -1352,7 +1368,7 @@ export class App {
       openWith,
       button("☰", "Table of contents — Ctrl+B", () => this.toggleToc()),
       button("⚙", "Settings — Ctrl+,", () => this.openSettings()),
-      button("?", "Keyboard shortcuts — F1", showHelp),
+      button("?", "Help and release notes — F1", () => this.help()),
     );
     this.tabbar.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
   }
@@ -1380,10 +1396,10 @@ export class App {
         "section",
         { className: "welcome" },
         el("h1", { textContent: "Markdownz" }),
-        el("p", { textContent: "Open a Markdown or PDF document, or drop it here." }),
+        el("p", { textContent: "Open a document (Markdown, PDF, pictures, code, CSV, …), or drop it here." }),
         open,
         el("div", { className: "welcome-recent" }),
-        el("p", { className: "mdz-hint", textContent: "Ctrl+O open · F1 shortcuts · Esc close" }),
+        el("p", { className: "mdz-hint", textContent: "Ctrl+O open · F1 help and release notes · Esc close" }),
       );
       this.docs.append(this.welcome);
     }
@@ -1498,7 +1514,7 @@ export class App {
       if (e.key === "ArrowLeft") void this.back();
       else if (e.key === "ArrowRight") void this.forward();
       else handled = false;
-    } else if (e.key === "F1") showHelp();
+    } else if (e.key === "F1") this.help();
     else if (e.key === "F3") this.finder.step(e.shiftKey ? -1 : 1);
     else if (e.key === "F5") this.reload();
     else handled = false;
