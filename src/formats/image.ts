@@ -76,6 +76,9 @@ export function svgSize(text: string): { width: number; height: number } | null 
   return { width, height };
 }
 
+/** Turns a file of another picture format into one the WebView shows (PNG), for plugins (TIFF, HEIC). */
+export type ToImage = (data: Uint8Array, path: string) => Promise<{ image: Blob; dpi?: { x: number; y: number }; label?: string }>;
+
 const formatBytes = (n: number) => (n < 1024 ? `${n} B` : n < 1024 * 1024 ? `${(n / 1024).toFixed(0)} kB` : `${(n / 1024 / 1024).toFixed(1)} MB`);
 
 class ImageView implements DocumentView {
@@ -97,7 +100,7 @@ class ImageView implements DocumentView {
     clear: () => {},
   };
 
-  constructor() {
+  constructor(private toImage?: ToImage) {
     this.stage.append(this.img);
     this.scroller.append(this.stage);
     this.element.append(this.scroller, this.caption);
@@ -111,7 +114,8 @@ class ImageView implements DocumentView {
   async load(path: string, ctx: ViewContext): Promise<{ title?: string }> {
     const ext = extname(path);
     const data = await backend.readBinary(path);
-    const url = URL.createObjectURL(new Blob([data as BlobPart], { type: MIME[ext] ?? "application/octet-stream" }));
+    const converted = this.toImage ? await this.toImage(data, path) : null;
+    const url = URL.createObjectURL(converted?.image ?? new Blob([data as BlobPart], { type: MIME[ext] ?? "application/octet-stream" }));
     const img = this.img;
     await new Promise<void>((resolve, reject) => {
       img.onload = () => resolve();
@@ -126,14 +130,14 @@ class ImageView implements DocumentView {
     const width = img.naturalWidth || (mm ? mm.width / UNIT_MM.px : 800);
     const height = img.naturalHeight || (mm ? mm.height / UNIT_MM.px : 600);
     this.natural = { width, height };
-    const dpi = ext === "svg" ? null : storedDpi(data);
+    const dpi = converted ? (converted.dpi ?? null) : ext === "svg" ? null : storedDpi(data);
     this.paper = mm ?? {
       width: (width * MM_PER_INCH) / (dpi?.x ?? CSS_DPI),
       height: (height * MM_PER_INCH) / (dpi?.y ?? CSS_DPI),
     };
     const pixels = ext === "svg" ? "vector" : `${img.naturalWidth} × ${img.naturalHeight} px`;
     const print = `${Math.round(this.paper.width)} × ${Math.round(this.paper.height)} mm${dpi ? ` at ${Math.round(dpi.x)} dpi` : ""}`;
-    this.caption.textContent = `${ext.toUpperCase()} · ${pixels} · ${formatBytes(data.length)} · ${print}`;
+    this.caption.textContent = `${converted?.label ?? ext.toUpperCase()} · ${pixels} · ${formatBytes(data.length)} · ${print}`;
     this.zoom = ctx.zoom;
     this.layout();
     return {};
@@ -211,6 +215,11 @@ class ImageView implements DocumentView {
     if (this.url) URL.revokeObjectURL(this.url);
     this.element.remove();
   }
+}
+
+/** A picture view for a format converted by a plugin. */
+export function createImageView(toImage: ToImage): DocumentView {
+  return new ImageView(toImage);
 }
 
 export const imageFormat: FormatPlugin = {

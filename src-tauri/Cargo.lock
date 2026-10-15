@@ -2167,9 +2167,13 @@ name = "markdownz"
 version = "0.4.6"
 dependencies = [
  "ashpd",
+ "base64 0.22.1",
  "clipboard-win",
  "dunce",
+ "minisign-verify",
  "notify",
+ "reqwest",
+ "rustls",
  "serde",
  "serde_json",
  "tauri",

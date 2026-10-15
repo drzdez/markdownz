@@ -2,6 +2,8 @@
 //! routing "open this file" requests (command line, second instance, macOS
 //! file associations) to the single viewer window.
 
+mod plugins;
+
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -347,6 +349,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
+        .register_uri_scheme_protocol("mdzplugin", |ctx, request| plugins::serve(ctx.app_handle(), request))
         .manage(Mutex::new(Pending { ready: false, files: startup }))
         .setup(|app| {
             let files = Arc::new(Mutex::new(HashSet::new()));
@@ -381,7 +384,13 @@ pub fn run() {
             load_state,
             save_state,
             take_startup_files,
-            print_page
+            print_page,
+            plugins::plugin_index,
+            plugins::plugin_install,
+            plugins::plugin_remove,
+            plugins::plugin_list,
+            plugins::plugin_check,
+            plugins::installer_plugins
         ])
         .build(tauri::generate_context!())
         .expect("error while building Markdownz")

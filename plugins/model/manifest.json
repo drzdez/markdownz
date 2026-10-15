@@ -1,0 +1,5 @@
+{
+  "name": "3D models",
+  "description": "STL, 3MF, OBJ, PLY and glTF models: turn, pan and zoom, print the current view",
+  "extensions": ["stl", "3mf", "obj", "ply", "gltf", "glb"]
+}

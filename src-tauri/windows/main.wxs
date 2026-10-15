@@ -11,6 +11,9 @@
      and Start menu shortcut components keep HKCU key paths: MSI validation (ICE38/ICE43/ICE57)
      requires that for components in profile folders, and non-advertised shortcuts never
      trigger a repair.
+  3. A "Plugins" page after the install folder: the chosen plugins (also settable on the
+     command line, e.g. PLUGIN_DXF=1) are written to install.ini; each user's first start
+     downloads them. Plugins can be added or removed later in Settings > Plugins.
   Keep the rest in sync with the upstream template when upgrading the Tauri CLI.
 -->
 <?if $(sys.BUILDARCH)="x86"?>
@@ -128,6 +131,46 @@
 
         <UIRef Id="WixUI_InstallDir" />
 
+        <!-- Plugins chosen on the Plugins page; downloaded by the app at the first start of each user. -->
+        <Property Id="PLUGIN_DXF" Secure="yes" />
+        <Property Id="PLUGIN_MODEL" Secure="yes" />
+        <Property Id="PLUGIN_TIFF" Secure="yes" />
+        <Property Id="PLUGIN_DOCX" Secure="yes" />
+        <Property Id="PLUGIN_XLSX" Secure="yes" />
+        <SetProperty Action="SetPluginsDxf" Id="MDZPLUGINS" Value="[MDZPLUGINS]dxf " After="CostFinalize" Sequence="execute">PLUGIN_DXF = "1"</SetProperty>
+        <SetProperty Action="SetPluginsModel" Id="MDZPLUGINS" Value="[MDZPLUGINS]model " After="SetPluginsDxf" Sequence="execute">PLUGIN_MODEL = "1"</SetProperty>
+        <SetProperty Action="SetPluginsTiff" Id="MDZPLUGINS" Value="[MDZPLUGINS]tiff " After="SetPluginsModel" Sequence="execute">PLUGIN_TIFF = "1"</SetProperty>
+        <SetProperty Action="SetPluginsDocx" Id="MDZPLUGINS" Value="[MDZPLUGINS]docx " After="SetPluginsTiff" Sequence="execute">PLUGIN_DOCX = "1"</SetProperty>
+        <SetProperty Action="SetPluginsXlsx" Id="MDZPLUGINS" Value="[MDZPLUGINS]xlsx " After="SetPluginsDocx" Sequence="execute">PLUGIN_XLSX = "1"</SetProperty>
+
+        <UI>
+            <Dialog Id="PluginsDlg" Width="370" Height="270" Title="!(loc.InstallDirDlg_Title)">
+                <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44" TabSkip="no" Text="!(loc.InstallDirDlgBannerBitmap)" />
+                <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+                <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15" Transparent="yes" NoPrefix="yes" Text="{\WixUI_Font_Title}Plugins" />
+                <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15" Transparent="yes" NoPrefix="yes" Text="More formats Markdownz can show. Choose any, or none." />
+                <Control Id="Dxf" Type="CheckBox" X="20" Y="54" Width="330" Height="15" Property="PLUGIN_DXF" CheckBoxValue="1" Text="DXF drawings: layers, pan, zoom, print" />
+                <Control Id="Model" Type="CheckBox" X="20" Y="72" Width="330" Height="15" Property="PLUGIN_MODEL" CheckBoxValue="1" Text="3D models: STL, 3MF, OBJ, PLY, glTF" />
+                <Control Id="Tiff" Type="CheckBox" X="20" Y="90" Width="330" Height="15" Property="PLUGIN_TIFF" CheckBoxValue="1" Text="TIFF pictures, also scans and faxes with several pages" />
+                <Control Id="Docx" Type="CheckBox" X="20" Y="108" Width="330" Height="15" Property="PLUGIN_DOCX" CheckBoxValue="1" Text="Word documents (.docx)" />
+                <Control Id="Xlsx" Type="CheckBox" X="20" Y="126" Width="330" Height="15" Property="PLUGIN_XLSX" CheckBoxValue="1" Text="Excel workbooks (.xlsx)" />
+                <Control Id="Note" Type="Text" X="20" Y="152" Width="330" Height="72" NoPrefix="yes" Text="The chosen plugins are downloaded from the Markdownz release when the app starts for the first time (signed, a few hundred kB to 1.5 MB each). You can add or remove plugins at any time later in Markdownz: Settings > Plugins. When you open a file that a plugin can show, Markdownz also offers to install it." />
+                <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+                <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17" Text="!(loc.WixUIBack)">
+                    <Publish Event="NewDialog" Value="InstallDirDlg">1</Publish>
+                </Control>
+                <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17" Default="yes" Text="!(loc.WixUINext)">
+                    <Publish Event="NewDialog" Value="VerifyReadyDlg">1</Publish>
+                </Control>
+                <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17" Cancel="yes" Text="!(loc.WixUICancel)">
+                    <Publish Event="SpawnDialog" Value="CancelDlg">1</Publish>
+                </Control>
+            </Dialog>
+            <!-- Install folder -> Plugins -> Ready to install (later NewDialog events override the stock ones). -->
+            <Publish Dialog="InstallDirDlg" Control="Next" Event="NewDialog" Value="PluginsDlg" Order="5">WIXUI_DONTVALIDATEPATH OR WIXUI_INSTALLDIR_VALID="1"</Publish>
+            <Publish Dialog="VerifyReadyDlg" Control="Back" Event="NewDialog" Value="PluginsDlg" Order="5">NOT Installed</Publish>
+        </UI>
+
         <Directory Id="TARGETDIR" Name="SourceDir">
             <Directory Id="DesktopFolder" Name="Desktop">
                 <Component Id="ApplicationShortcutDesktop" Guid="*">
@@ -149,6 +192,7 @@
                 <RegistryKey Root="HKLM" Key="Software\\{{manufacturer}}\\{{product_name}}">
                     <RegistryValue Name="InstallDir" Type="string" Value="[INSTALLDIR]" KeyPath="yes" />
                 </RegistryKey>
+                <IniFile Id="InstallIniPlugins" Action="addLine" Directory="INSTALLDIR" Name="install.ini" Section="Markdownz" Key="Plugins" Value="[MDZPLUGINS]" />
                 <!-- Change the Root to HKCU for perUser installations -->
                 {{#each deep_link_protocols as |protocol| ~}}
                 <RegistryKey Root="HKLM" Key="Software\Classes\\{{protocol}}">

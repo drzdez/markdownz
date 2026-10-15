@@ -12,7 +12,7 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 - **Tabs that come back.** Open documents are restored with their scroll position and history the next time you start the app.
 - **Tree-shaped history.** Going back and following another link does not throw the old path away. **Forward** asks which branch to take, and <kbd>Ctrl</kbd>+<kbd>H</kbd> shows the whole tree.
 - **Live reload.** Save the file in your editor and the view updates without losing your place.
-- **Safe by default.** Scripts and event handlers in raw HTML are stripped, JavaScript in PDFs is not run, and nothing is downloaded at runtime. Links to local files Markdownz cannot show are only revealed in the file manager, never executed.
+- **Safe by default.** Scripts and event handlers in raw HTML are stripped, JavaScript in PDFs is not run, and nothing is downloaded at runtime unless you install a plugin (signed, from the Markdownz release). Links to local files Markdownz cannot show are only revealed in the file manager, never executed.
 
 ## Features
 
@@ -27,6 +27,7 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 | CSV | `.csv`, `.tsv`: comma, semicolon or tab found by itself, quoted fields with line breaks, the first row as the header, numbers aligned right; wide tables print like tables in Markdown (landscape pages, repeated header) |
 | Diagram sources | Mermaid (`.mmd`) and Graphviz (`.dot`, `.gv`) files drawn as diagrams |
 | Jupyter notebooks | `.ipynb` with Markdown cells, code with colours and the saved outputs (text, tables, pictures, errors); nothing is run |
+| Plugins to download | More formats, installed only when you want them (Settings → Plugins, or the *Install* button shown when you open such a file): **DXF drawings** (layers, pan and zoom, print fitted to the paper), **3D models** (STL, 3MF, OBJ, PLY, glTF; turn, pan, zoom, print the current view), **TIFF** (also with several pages), **Word** `.docx` (headings, lists, tables, pictures; not the exact Word layout), **Excel** `.xlsx` (every sheet as a table of values). Plugins come with each release, are signed with the same key as updates and are checked again on every load; they are updated with the app and can be removed at any time. The Windows installer (MSI) has a *Plugins* page to choose them right away (silently: `msiexec /i Markdownz….msi PLUGIN_DXF=1 PLUGIN_MODEL=1 PLUGIN_TIFF=1 PLUGIN_DOCX=1 PLUGIN_XLSX=1`); they are downloaded at each user's first start. Elsewhere the first *What's new* after installing points to them |
 | Navigation | Relative links to other `.md` and `.pdf` files open in the same tab; <kbd>Ctrl</kbd>+click or middle click opens a new tab; `#anchors` work across files |
 | Viewing | Zoom per document, separately for the continuous view and the page view (<kbd>Ctrl</kbd>+wheel, <kbd>Ctrl</kbd>+<kbd>+</kbd>/<kbd>-</kbd>); a newly opened document starts at the zoom set in Settings (one value for each view), restored tabs keep theirs; the % button shows the zoom: a click returns to the preset, a double click to 100 %; <kbd>Ctrl</kbd>+<kbd>0</kbd> gives 100 %, and at 100 % the preset, table of contents sidebar, find in page, click a diagram to enlarge with pan and zoom, light/dark theme following the system, print or save as PDF |
 | Side by side | The ▥ menu shows 2, 3 or 4 documents next to each other (up to 6 via right click on a tab → *Show side by side*); <kbd>Ctrl</kbd>+<kbd>\</kbd> toggles two. Each pane has its own document, scroll position and history; the clicked pane is the active one (toolbar, find, table of contents). Drag the divider to resize, double-click it for equal widths. Panes and widths are restored on the next start |
@@ -38,6 +39,12 @@ Double-click a `.md` or `.pdf` file, read it, press <kbd>Esc</kbd>, done.
 | Integration | `.md` and `.pdf` file associations, single instance (opening another file adds a tab), drag and drop, command line `markdownz file.md …` |
 
 Try [`samples/demo.md`](samples/demo.md) for a tour of everything.
+
+## Plugins and security
+
+- **A plugin has the same rights as the app.** A plugin is JavaScript that runs in the Markdownz window, not in a sandbox: it can do whatever the app can (read files, call the app's own commands). That is why Markdownz installs only plugins from its own release, signed with the same key as updates; the signature is checked when a plugin is downloaded and again every time it is loaded, and a changed file is refused. There is no way to install plugins from anybody else. Trust a plugin as much as Markdownz itself, and do not install the ones you do not need.
+- **What changed in the window's security policy (CSP).** Two additions make plugins possible: scripts may come from `mdzplugin:`, the app's own protocol that serves an installed plugin only after its signature check (`script-src`), and the window may read `blob:` addresses (`connect-src`), which plugins use to hand fonts and drawings to their libraries from memory. A `blob:` address can only be made by code already running in the window, so this opens no way to the network or to other files. Scripts in documents are still removed, and no web address was added.
+- **`npm audit` in `plugins/`** reports a moderate issue in `sprintf-js` ([GHSA-hp3w-g68c-fv3c](https://github.com/advisories/GHSA-hp3w-g68c-fv3c)), pulled in by `argparse`, which the Word library `mammoth` needs only for its command-line tool. Neither is in the built Word plugin (checked in `markdownz-plugin-docx.js`); the "fix" npm offers would downgrade mammoth to a 2016 version, so it is not applied.
 
 ## Keyboard shortcuts
 
@@ -220,14 +227,19 @@ src/                     frontend (TypeScript, Vite)
   render/plugins/        Markdown extensions (alerts, math, Mermaid, Graphviz, …)
   print/                 imposition (pages → sheets, booklet), Markdown pagination, sheet DOM
   ui/                    dialogs (incl. print dialog), find bar, TOC, diagram viewer, theme
+  plugins/               downloadable plugins: contract (api.ts), install/update/load (manager.ts)
+plugins/                 the downloadable plugins (DXF, 3D models, TIFF, DOCX, XLSX), built by scripts/build-plugins.mjs
 src-tauri/               native shell (Rust, Tauri 2)
   src/lib.rs             file reading/watching, state files, single instance, file-open events, open with
+  src/plugins.rs         downloadable plugins: download, signature check, mdzplugin: protocol
   tauri.conf.json        window, security policy (CSP), bundling, file associations
   capabilities/          what the web view is allowed to call
 ```
 
 Rendering pipeline: `markdown-it` + enabled plugins → HTML → [DOMPurify](https://github.com/cure53/DOMPurify) → DOM → plugin `postRender` hooks (Mermaid and Graphviz turn placeholders into SVG) → shown.
 Heavy libraries (Mermaid, Viz.js, pdf.js) load only when a document needs them. pdf.js data files (CMaps, fonts, decoders) are copied to `public/pdfjs` by `scripts/copy-pdfjs.mjs` before `dev` and `build`.
+
+Installed plugins live in the `plugins` folder of the app data directory (on Windows the same folder as the state below).
 
 State lives in the OS config directory (`%APPDATA%\io.github.drzdez.markdownz` on Windows, `~/Library/Application Support/io.github.drzdez.markdownz` on macOS, `~/.config/io.github.drzdez.markdownz` on Linux): `session.json` (tabs, history, zoom) and `config.json` (theme, formats, Markdown extensions, open-with applications).
 
@@ -247,6 +259,21 @@ export const asciidocFormat: FormatPlugin = {
 ```
 
 Also add the extensions to `fileAssociations` in `tauri.conf.json` and to `MimeType` in the Flatpak `.desktop` file.
+
+### Writing a downloadable plugin
+
+Formats with big libraries are plugins outside the installer: `plugins/<id>/` holds a `manifest.json` (name, description, extensions) and an `index.ts` whose default export receives the `PluginApi` ([`src/plugins/api.ts`](src/plugins/api.ts): read the file, the app's Markdown and picture views, `el`) and returns `createView(host, path)`. It also exports `api` (the `PLUGIN_API` it was built for); raise `PLUGIN_API` when the contract changes, and plugins built for another one are offered as updates instead of loaded.
+
+```bash
+npm ci --prefix plugins                   # the plugins' libraries (three.js, dxf-viewer, mammoth, …), kept out of the app
+node scripts/build-plugins.mjs            # dist-plugins/markdownz-plugin-<id>.js + plugins.json
+```
+
+With `TAURI_SIGNING_PRIVATE_KEY` (and `_PASSWORD`) set, the script signs every plugin (`tauri signer sign`; the signed comment names the file) and puts the signatures into `plugins.json`. The release workflow does this and attaches the plugins and `plugins.json` to the release; the app reads `releases/download/v<its version>/plugins.json`. The Rust side downloads a plugin, checks it against the updater public key and serves it to the web view through the `mdzplugin:` protocol, checking the signature again on every load.
+
+A new plugin also gets a checkbox on the *Plugins* page of the MSI ([`src-tauri/windows/main.wxs`](src-tauri/windows/main.wxs): a `PLUGIN_<ID>` property, its `SetProperty` and a `CheckBox`).
+
+To try plugins before a release: build them with a throwaway key (`npx tauri signer generate`) and `--base http://127.0.0.1:8765`, serve `dist-plugins` there (`python -m http.server 8765 --directory dist-plugins`), build the app with that public key (`--config` with `plugins.updater.pubkey`), and set `"pluginIndex": "http://127.0.0.1:8765/plugins.json"` in `config.json`.
 
 ### Writing a Markdown extension
 
@@ -268,7 +295,7 @@ export const plantumlPlugin: ViewerPlugin = {
 
 - PlantUML (needs Java or a server, so it would stay opt-in)
 - Code signing for Windows and macOS
-- More formats as plugins (images, AsciiDoc, …)
+- More formats as plugins (HEIC, AsciiDoc, …)
 - Editing stays out of scope: use **Open with…**
 
 ## License

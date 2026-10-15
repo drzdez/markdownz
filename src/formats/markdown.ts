@@ -91,7 +91,7 @@ class MarkdownView implements DocumentView {
 
   constructor(
     host: ViewHost,
-    private toMarkdown?: ToMarkdown,
+    private toMarkdown?: BytesToMarkdown,
   ) {
     this.element.addEventListener("scroll", () => host.onScroll());
     this.element.addEventListener("click", (e) => {
@@ -173,14 +173,16 @@ class MarkdownView implements DocumentView {
     const pages = await this.printPages(setup.format, undefined, setup.layout).catch(() => null);
     if (token !== this.marksToken) return;
     const notes = pages?.notes;
-    this.marks.set(notes ? { blocks: notes.blocks, marks: notes.marks, turnable: notes.turnable, pageStarts: notes.pageStarts } : null);
+    // Markers in a converted file come from the conversion (e.g. one page per TIFF page) and cannot be edited.
+    const marks = this.toMarkdown ? [] : notes?.marks;
+    this.marks.set(notes ? { blocks: notes.blocks, marks: marks!, turnable: notes.turnable, pageStarts: notes.pageStarts } : null);
     pages?.dispose();
   }
 
   async load(path: string, ctx: ViewContext): Promise<{ title?: string }> {
     if (this.toMarkdown) {
       this.path = path;
-      this.source = this.toMarkdown(decodeText(await backend.readBinary(path)), path);
+      this.source = await this.toMarkdown(await backend.readBinary(path), path);
     } else {
       const doc = await backend.readDoc(path);
       this.path = doc.path;
@@ -351,6 +353,14 @@ export type ToMarkdown = (text: string, path: string) => string;
 
 /** A Markdown view for a file of another format, turned into Markdown when loaded. */
 export function createMarkdownView(host: ViewHost, toMarkdown: ToMarkdown): DocumentView {
+  return new MarkdownView(host, (data, path) => toMarkdown(decodeText(data), path));
+}
+
+/** Turns the contents of a binary file (DOCX, …) into Markdown, for plugins. */
+export type BytesToMarkdown = (data: Uint8Array, path: string) => string | Promise<string>;
+
+/** A Markdown view for a binary file turned into Markdown (HTML inside it is allowed and sanitized). */
+export function createConvertedView(host: ViewHost, toMarkdown: BytesToMarkdown): DocumentView {
   return new MarkdownView(host, toMarkdown);
 }
 

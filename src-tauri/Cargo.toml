@@ -27,6 +27,11 @@ dunce = "1"
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# Plugins: download, check against the updater key (same crates as the updater plugin).
+reqwest = { version = "0.13", default-features = false, features = ["rustls-no-provider"] }
+rustls = { version = "0.23", default-features = false, features = ["ring"] }
+minisign-verify = "0.2"
+base64 = "0.22"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 # "Open with" chooser through xdg-desktop-portal (works inside Flatpak too).

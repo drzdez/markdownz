@@ -6,8 +6,20 @@ import { markdownFormat } from "./markdown";
 import { pdfFormat } from "./pdf";
 import type { FormatPlugin } from "./types";
 
-/** All document formats in settings order. Add new formats here. */
+/** All document formats in settings order: the built-in ones (add new ones here), then the installed plugins. */
 export const FORMATS: FormatPlugin[] = [markdownFormat, pdfFormat, imageFormat, textFormat, csvFormat, diagramFormat, notebookFormat];
+
+/** Adds an installed plugin's format, or replaces it after an update. */
+export function registerFormat(format: FormatPlugin): void {
+  const i = FORMATS.findIndex((f) => f.id === format.id);
+  if (i >= 0) FORMATS[i] = format;
+  else FORMATS.push(format);
+}
+
+export function unregisterFormat(id: string): void {
+  const i = FORMATS.findIndex((f) => f.id === id);
+  if (i >= 0) FORMATS.splice(i, 1);
+}
 
 export function isFormatEnabled(format: FormatPlugin, config: Config): boolean {
   return config.formats[format.id] ?? format.defaultEnabled;

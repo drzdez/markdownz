@@ -1,0 +1,5 @@
+{
+  "name": "DXF drawings",
+  "description": "AutoCAD DXF drawings with layers: pan, zoom, print to fit the paper",
+  "extensions": ["dxf"]
+}

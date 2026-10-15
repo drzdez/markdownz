@@ -1567,3 +1567,27 @@ kbd {
 .mdz-releases + .mdz-print-buttons {
   margin-top: 16px;
 }
+
+/* ------------------------------------------------------------ plugins */
+
+.mdz-plugin-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mdz-plugin-actions {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 8px;
+}
+
+.mdz-plugin-actions .mdz-settings-button {
+  margin-top: 0;
+  padding: 1px 8px;
+  font-size: 12px;
+}
+
+.mdz-about .mdz-print-buttons {
+  margin-top: 16px;
+}

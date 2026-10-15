@@ -4,7 +4,9 @@ import { FORMATS, isFormatEnabled } from "../formats/registry";
 import { APP_VERSION, RELEASES, type Release } from "../releaseNotes";
 import { PLUGINS, isEnabled } from "../render/renderer";
 import type { Config, ThemeSetting } from "../state";
+import { installedPlugins } from "../plugins/manager";
 import { el, openModal } from "./overlay";
+import { pluginSettings } from "./pluginSettings";
 
 const nodeLabel = (n: HistoryNode) => n.title || basename(n.path);
 
@@ -73,7 +75,7 @@ export function showHistoryTree(tree: HistoryTree, onPick: (node: HistoryNode) =
   body.querySelector<HTMLElement>(".current")?.focus();
 }
 
-export function showSettings(config: Config, onChange: (config: Config) => void, checkNow: () => void): void {
+export function showSettings(config: Config, onChange: (config: Config) => void, checkNow: () => void, pluginsChanged: () => void, section?: "plugins"): void {
   const themes: [ThemeSetting, string][] = [
     ["auto", "Follow system"],
     ["light", "Light"],
@@ -119,7 +121,8 @@ export function showSettings(config: Config, onChange: (config: Config) => void,
   };
 
   const formatGroup = el("fieldset", {}, el("legend", { textContent: "Document formats" }));
-  for (const format of FORMATS) {
+  const installed = new Set(installedPlugins().map((p) => p.id));
+  for (const format of FORMATS.filter((f) => !installed.has(f.id))) {
     formatGroup.append(
       option(format.name, format.description, isFormatEnabled(format, config), (on) => {
         config = { ...config, formats: { ...config.formats, [format.id]: on } };
@@ -168,7 +171,16 @@ export function showSettings(config: Config, onChange: (config: Config) => void,
     el("label", {}, daily, " Check for a new version once a day"),
     now,
   );
-  const layer = openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, zoomGroup, formatGroup, pluginGroup, updateGroup));
+  const pluginsGroup = pluginSettings({
+    config: () => config,
+    enable: (id, on) => {
+      config = { ...config, formats: { ...config.formats, [id]: on } };
+      onChange(config);
+    },
+    changed: pluginsChanged,
+  });
+  const layer = openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, zoomGroup, formatGroup, pluginsGroup, pluginGroup, updateGroup));
+  if (section === "plugins") pluginsGroup.scrollIntoView({ block: "start" });
   now.addEventListener("click", () => {
     layer.close();
     checkNow();
@@ -265,15 +277,30 @@ function releaseList(releases: Release[]): HTMLElement {
   return list;
 }
 
-/** "What's new" after an install or an update: the notes of the versions not seen yet. */
-export function showWhatsNew(releases: Release[], openAll: () => void): void {
+/** "What's new" after an install or an update: the notes of the versions not seen yet; for new users also a word about plugins. */
+export function showWhatsNew(releases: Release[], openAll: () => void, choosePlugins?: () => void): void {
   const all = el("button", { textContent: "All release notes" });
   const ok = el("button", { className: "primary", textContent: "OK", autofocus: true });
+  const pluginsButton = el("button", { className: "mdz-settings-button", textContent: "Choose plugins…" });
+  const pluginsNote = choosePlugins
+    ? [
+        el("h3", { textContent: "Plugins" }),
+        el("p", {
+          textContent:
+            "Markdownz can show more formats with plugins: DXF drawings, 3D models, TIFF pictures, Word and Excel files. They are downloaded only when you choose them, and you can add or remove them at any time in Settings → Plugins.",
+        }),
+        el("p", {}, pluginsButton),
+      ]
+    : [];
   const layer = openModal(
     `What's new in Markdownz ${APP_VERSION}`,
-    el("div", {}, releaseList(releases), el("div", { className: "mdz-print-buttons" }, all, el("span", { className: "spacer" }), ok)),
+    el("div", { className: "mdz-about" }, releaseList(releases), ...pluginsNote, el("div", { className: "mdz-print-buttons" }, all, el("span", { className: "spacer" }), ok)),
     { className: "wide" },
   );
+  pluginsButton.addEventListener("click", () => {
+    layer.close();
+    choosePlugins?.();
+  });
   ok.addEventListener("click", () => layer.close());
   all.addEventListener("click", () => {
     layer.close();

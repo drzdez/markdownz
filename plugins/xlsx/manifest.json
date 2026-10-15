@@ -1,0 +1,5 @@
+{
+  "name": "Excel workbooks",
+  "description": "XLSX workbooks: every sheet as a table with its values (formulas show their last result)",
+  "extensions": ["xlsx"]
+}

@@ -18,6 +18,8 @@ import { insertLine, isMarkerLine, moveLine, onlyMarkersChanged, removeLine, rep
 import { setGhost, type MarkAction } from "./ui/orientationMarks";
 import type { OrientationTarget } from "./formats/types";
 import { APP_VERSION, RELEASES, releasesSince } from "./releaseNotes";
+import * as plugins from "./plugins/manager";
+import type { PluginManifest } from "./plugins/api";
 import { pickForward, showHelp, showHistoryTree, showSettings, showWhatsNew, type HelpSection } from "./ui/dialogs";
 import { PageView, pageViewKey, type PageColumns } from "./ui/pageView";
 import { openPrintDialog } from "./ui/printDialog";
@@ -154,6 +156,7 @@ export class App {
     if (this.config.pageExceptions) this.config.pageExceptions = pruneExceptions(this.config.pageExceptions, Date.now());
     this.session = { ...DEFAULT_SESSION, ...(await backend.loadState<Session>("session")) };
     initTheme(this.config.theme, () => this.rerenderAll());
+    await plugins.loadInstalled().catch((e) => console.warn("cannot list the installed plugins", e));
     for (const format of FORMATS) format.configure?.(this.config);
     this.toc.visible = this.session.toc;
     this.bindEvents();
@@ -183,21 +186,50 @@ export class App {
     else if (restored) await this.activate(restored);
     else this.showWelcome();
     await backend.showWindow();
-    if (!this.showNewReleases() && this.config.checkUpdates && shouldCheck(this.config.lastUpdateCheck, Date.now())) void this.checkUpdates(false);
+    // Plugins installed with another version are replaced by those of this one.
+    void plugins
+      .updateInstalled(this.config)
+      .then((changed) => changed && this.pluginsChanged())
+      .catch(() => {});
+    const chosen = this.config.installerPluginsDone ? [] : await backend.installerPlugins().catch(() => []);
+    void this.installChosenPlugins(chosen);
+    if (!this.showNewReleases(!chosen.length) && this.config.checkUpdates && shouldCheck(this.config.lastUpdateCheck, Date.now())) void this.checkUpdates(false);
   }
 
   private help(section?: HelpSection): void {
     showHelp((url) => void backend.openExternal(url), section);
   }
 
-  /** Release notes once after an install or an update; true when shown. */
-  private showNewReleases(): boolean {
+  /**
+   * Once per user, the plugins chosen in the installer (Windows MSI) are downloaded;
+   * offline, the next start tries again. Afterwards only Settings → Plugins decides.
+   */
+  private async installChosenPlugins(ids: string[]): Promise<void> {
+    if (this.config.installerPluginsDone || !backend.inTauri) return;
+    try {
+      const names = ids.length ? await plugins.installChosen(this.config, ids) : [];
+      this.config = { ...this.config, installerPluginsDone: true };
+      void backend.saveState("config", this.config);
+      if (names.length) {
+        this.pluginsChanged();
+        toast(`Installed the plugins chosen in the installer: ${names.join(", ")}. Settings → Plugins adds or removes plugins.`);
+      }
+    } catch {
+      toast("Cannot download the plugins chosen in the installer now; Markdownz tries again at the next start.");
+    }
+  }
+
+  /** Release notes once after an install or an update (with a word about plugins for new users); true when shown. */
+  private showNewReleases(offerPlugins: boolean): boolean {
     if (!backend.inTauri || this.config.seenVersion === APP_VERSION) return false;
     const releases = releasesSince(RELEASES, this.config.seenVersion, APP_VERSION);
+    const firstSeen = this.config.seenVersion;
     this.config = { ...this.config, seenVersion: APP_VERSION };
     void backend.saveState("config", this.config);
     if (!releases.length) return false;
-    showWhatsNew(releases, () => this.help("about"));
+    // Installed anew or from a version without plugins: say that they exist.
+    const newUser = offerPlugins && firstSeen === undefined;
+    showWhatsNew(releases, () => this.help("about"), newUser ? () => this.openSettings("plugins") : undefined);
     return true;
   }
 
@@ -880,9 +912,11 @@ export class App {
     const format = formatFor(node.path, this.config);
     let title: string | undefined;
     let error: unknown = null;
+    let offer: PluginManifest | null = null;
 
     if (!format) {
       error = new Error(`No viewer is enabled for .${extname(node.path) || "(no extension)"} files.`);
+      offer = await plugins.availableFor(node.path, this.config).catch(() => null);
     } else {
       // Views need to be in the DOM while loading (e.g. PDF layout measures its container).
       if (!tab.view || tab.format !== format) {
@@ -897,7 +931,19 @@ export class App {
       }
     }
     if (token !== tab.token) return;
-    if (error) {
+    if (error && offer) {
+      const plugin = offer;
+      tab.setView(
+        new ErrorView(node.path, error, `The ${plugin.name} plugin can show it: ${plugin.description} (${plugins.formatSize(plugin.size)} download, signed by Markdownz).`, {
+          label: `Install the ${plugin.name} plugin`,
+          run: async () => {
+            await plugins.install(plugin);
+            this.pluginsChanged();
+          },
+        }),
+        null,
+      );
+    } else if (error) {
       tab.setView(new ErrorView(node.path, error, "Use “Open with…” (Ctrl+Shift+O) to open it in another application."), null);
     } else {
       node.title = title;
@@ -1058,6 +1104,13 @@ export class App {
   }
 
   /** Theme or settings changed: refresh the shown views now, the others when shown. */
+  /** After plugins were installed, updated or removed: tabs whose format changed show their document again. */
+  private pluginsChanged(): void {
+    for (const tab of this.tabs) if (tab.format !== formatFor(tab.path, this.config)) tab.stale = true;
+    for (const tab of this.panes) if (tab.stale) void this.renderTab(tab, "keep");
+    this.renderTabbar();
+  }
+
   private rerenderAll(): void {
     for (const tab of this.tabs) tab.stale = true;
     for (const tab of this.panes) this.refreshTab(tab);
@@ -1379,8 +1432,14 @@ export class App {
     this.scheduleSave();
   }
 
-  private openSettings(): void {
-    showSettings(this.config, (config) => void this.updateConfig(config), () => void this.checkUpdates(true));
+  private openSettings(section?: "plugins"): void {
+    showSettings(
+      this.config,
+      (config) => void this.updateConfig(config),
+      () => void this.checkUpdates(true),
+      () => this.pluginsChanged(),
+      section,
+    );
   }
 
   private showWelcome(): void {
@@ -1535,5 +1594,6 @@ export function toast(message: string, kind: "info" | "warning" = "info"): void 
   box.classList.toggle("warning", kind === "warning");
   box.hidden = false;
   clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => (box.hidden = true), 2500);
+  // Long messages stay long enough to be read.
+  toastTimer = window.setTimeout(() => (box.hidden = true), Math.max(2500, message.length * 60));
 }

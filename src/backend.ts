@@ -142,6 +142,44 @@ export async function copyFile(path: string): Promise<void> {
   await invoke("copy_file", { path });
 }
 
+/** The plugin index (plugins.json) as text. */
+export async function pluginIndex(url: string): Promise<string> {
+  if (inTauri) return invoke<string>("plugin_index", { url });
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.text();
+}
+
+/** Downloads a plugin, checks its signature and stores it with its index entry. */
+export async function pluginInstall(manifest: object): Promise<void> {
+  if (inTauri) await invoke("plugin_install", { manifest });
+  else throw new Error("plugins need the app");
+}
+
+export async function pluginRemove(id: string): Promise<void> {
+  if (inTauri) await invoke("plugin_remove", { id });
+}
+
+/** Index entries of the installed plugins. */
+export async function pluginList<T>(): Promise<T[]> {
+  return inTauri ? invoke<T[]>("plugin_list") : [];
+}
+
+/** Plugin ids chosen in the installer (Windows MSI); empty elsewhere. */
+export async function installerPlugins(): Promise<string[]> {
+  return inTauri ? invoke<string[]>("installer_plugins") : [];
+}
+
+/** Rejects with the reason when an installed plugin cannot be loaded (damaged, signature). */
+export async function pluginCheck(id: string): Promise<void> {
+  if (inTauri) await invoke("plugin_check", { id });
+}
+
+/** URL the installed plugin module is imported from (served after checking its signature). */
+export function pluginModuleUrl(id: string): string {
+  return convertFileSrc(`${id}.js`, "mdzplugin");
+}
+
 export interface AvailableUpdate {
   current: string;
   version: string;

@@ -1,0 +1,5 @@
+{
+  "name": "Word documents",
+  "description": "DOCX documents as text with headings, lists, tables and pictures (not the exact Word layout)",
+  "extensions": ["docx"]
+}

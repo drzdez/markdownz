@@ -1,0 +1,5 @@
+{
+  "name": "TIFF pictures",
+  "description": "TIFF pictures, scans and faxes, also with several pages",
+  "extensions": ["tif", "tiff"]
+}

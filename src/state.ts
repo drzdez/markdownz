@@ -47,6 +47,10 @@ export interface Config {
   skippedVersion?: string;
   /** Last version whose release notes were shown ("What's new" after an install or update). */
   seenVersion?: string;
+  /** The plugins chosen in the installer were installed for this user (once; later Settings decide). */
+  installerPluginsDone?: boolean;
+  /** Plugin index to use instead of the one of this release (testing plugins before a release). */
+  pluginIndex?: string;
 }
 
 /** Open tabs etc., stored as `session.json`; restored on the next start. */

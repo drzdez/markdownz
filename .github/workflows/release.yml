@@ -61,6 +61,34 @@ jobs:
           prerelease: false
           args: ${{ matrix.args }}
 
+  plugins:
+    # Builds the format plugins, signs them with the updater key and attaches them with
+    # their index (plugins.json) to the draft release created by the build jobs.
+    needs: [build]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            plugins/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix plugins
+      - name: Build and sign plugins
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: node scripts/build-plugins.mjs --sign
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh release upload "$GITHUB_REF_NAME" dist-plugins/*.js dist-plugins/plugins.json --clobber -R "$GITHUB_REPOSITORY"
+
   flatpak:
     # Builds the Flatpak bundle from the same manifest as local builds.
     runs-on: ubuntu-24.04

@@ -11,7 +11,21 @@ export class ErrorView implements DocumentView {
     clear() {},
   };
 
-  constructor(path: string, error: unknown, hint = "") {
+  /** `action`: a button that may fix it (install a plugin); its failure is shown below it. */
+  constructor(path: string, error: unknown, hint = "", action?: { label: string; run(): Promise<void> }) {
+    const button = action && el("button", { className: "primary", textContent: action.label });
+    const status = el("p", { className: "mdz-hint" });
+    button?.addEventListener("click", async () => {
+      button.disabled = true;
+      status.textContent = "Working…";
+      try {
+        await action!.run();
+        status.textContent = "";
+      } catch (e) {
+        status.textContent = `Failed: ${e instanceof Error ? e.message : e}`;
+        button.disabled = false;
+      }
+    });
     this.element = el(
       "section",
       { className: "doc-view", tabIndex: -1 },
@@ -22,6 +36,7 @@ export class ErrorView implements DocumentView {
         el("p", {}, el("code", { textContent: path })),
         el("pre", { textContent: error instanceof Error ? error.message : String(error) }),
         ...(hint ? [el("p", { textContent: hint })] : []),
+        ...(button ? [el("p", {}, button), status] : []),
       ),
     );
   }
