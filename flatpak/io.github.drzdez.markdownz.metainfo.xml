@@ -81,6 +81,12 @@
   </keywords>
 
   <releases>
+    <release version="0.4.7" date="2026-10-15">
+      <description>
+        <p>Plugins for more formats, downloaded only when you choose them: DXF drawings, 3D models (STL, 3MF, OBJ, PLY, glTF), TIFF pictures, Word and Excel files. Install them in Settings → Plugins, when you open such a file, or on the Plugins page of the Windows installer; remove them at any time.</p>
+        <p>Text and code files, CSV tables, Mermaid and Graphviz sources and Jupyter notebooks open as documents with find, outline and printing. After an update the app shows what is new, and Help → About lists all release notes.</p>
+      </description>
+    </release>
     <release version="0.4.6" date="2026-10-14">
       <description>
         <p>Pictures open in tabs too: PNG, JPEG, GIF, WebP, AVIF, BMP, ICO and SVG, fitted to the window, with zoom and printing at the real size or fitted to the paper. The tab menu can copy the file itself, ready to paste into a folder or attach to an e-mail (Windows and macOS).</p>
