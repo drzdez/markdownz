@@ -949,6 +949,56 @@ img.mdz-wide {
   font-size: 0.9em;
 }
 
+/* Excel sheets (xlsx plugin): cells keep the workbook's colours, so the sheet stays light in dark mode too. */
+.markdown-body table.mdz-sheet {
+  background: #fff;
+  color: #000;
+  font-family: Aptos, Calibri, Carlito, "Segoe UI", sans-serif;
+  font-size: 11pt;
+  font-variant: normal;
+  line-height: 1.25;
+}
+.markdown-body table.mdz-sheet tr,
+.markdown-body table.mdz-sheet tr:nth-child(2n) {
+  background: transparent;
+  border-top: 0;
+}
+.markdown-body table.mdz-sheet td {
+  padding: 0;
+  border: 1px solid #e1e1e1;
+  vertical-align: bottom;
+  white-space: nowrap;
+}
+.markdown-body table.mdz-sheet.mdz-nogrid td {
+  border-color: transparent;
+}
+.markdown-body table.mdz-sheet td > div {
+  box-sizing: border-box;
+  padding: 1px 3px;
+  overflow: hidden;
+}
+.markdown-body table.mdz-sheet td > div.spill {
+  overflow: visible;
+}
+.markdown-body table.mdz-sheet td > div.wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+.markdown-body table.mdz-sheet th {
+  box-sizing: border-box;
+  padding: 1px 4px;
+  border: 1px solid #c8c8c8;
+  background: #f0f0f0;
+  color: #555;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  font-size: 8pt;
+  font-weight: normal;
+  text-align: center;
+}
+.markdown-body table.mdz-sheet tbody th {
+  min-width: 32px;
+}
+
 mark.mdz-find {
   background: var(--mark);
   color: inherit;

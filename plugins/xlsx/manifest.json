@@ -1,5 +1,5 @@
 {
   "name": "Excel workbooks",
-  "description": "XLSX workbooks: every sheet as a table with its values (formulas show their last result)",
+  "description": "XLSX workbooks: every sheet as Excel shows it, with fonts, colours, borders, number formats and merged cells (formulas show their last result)",
   "extensions": ["xlsx"]
 }
