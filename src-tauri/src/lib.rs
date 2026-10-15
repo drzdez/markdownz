@@ -222,19 +222,57 @@ mod assoc {
         Path::new(id).file_name().map(|n| n.to_string_lossy().to_lowercase()).unwrap_or_default()
     }
 
-    /// Without `own` (Markdownz, installed or not); a name that is only the
-    /// program's path (some apps register no display name) becomes its file stem.
+    /// The "File description" of a program's version information ("Foxit PDF Reader").
+    pub fn description(program: &Path) -> Option<String> {
+        use windows::Win32::Storage::FileSystem::{GetFileVersionInfoSizeW, GetFileVersionInfoW, VerQueryValueW};
+        let path = HSTRING::from(program.as_os_str());
+        let size = unsafe { GetFileVersionInfoSizeW(&path, None) };
+        if size == 0 {
+            return None;
+        }
+        let mut info = vec![0u8; size as usize];
+        unsafe { GetFileVersionInfoW(&path, None, size, info.as_mut_ptr().cast()) }.ok()?;
+        let query = |key: &HSTRING| {
+            let mut ptr = std::ptr::null_mut();
+            let mut len = 0u32;
+            let found = unsafe { VerQueryValueW(info.as_ptr().cast(), key, &mut ptr, &mut len) }.as_bool();
+            (found && !ptr.is_null() && len > 0).then_some((ptr, len))
+        };
+        // The first language of the file, then its English (US) and neutral blocks.
+        let mut blocks = Vec::new();
+        if let Some((ptr, len)) = query(&HSTRING::from(r"\VarFileInfo\Translation")) {
+            if len >= 4 {
+                let pair = unsafe { std::slice::from_raw_parts(ptr as *const u16, 2) };
+                blocks.push(format!("{:04x}{:04x}", pair[0], pair[1]));
+            }
+        }
+        blocks.extend(["040904b0", "040904e4", "000004b0"].map(String::from));
+        blocks.iter().find_map(|block| {
+            let (ptr, len) = query(&HSTRING::from(format!(r"\StringFileInfo\{block}\FileDescription")))?;
+            let text = unsafe { std::slice::from_raw_parts(ptr as *const u16, len as usize) };
+            let text = String::from_utf16_lossy(text).trim_end_matches('\0').trim().to_string();
+            (!text.is_empty()).then_some(text)
+        })
+    }
+
+    /// Without `own` (Markdownz, installed or not) and programs no longer there. A name that is only the
+    /// program's path (some apps register no display name) becomes the program's
+    /// file description, or else its file name.
     pub fn apps(file: &Path, own: Option<&Path>) -> Result<Vec<AssocApp>, String> {
         let _com = Com::init()?;
         let own = own.map(|p| program(&p.to_string_lossy()));
         Ok(handlers(file)?
             .into_iter()
             .filter(|(id, _, _)| own.as_deref() != Some(program(id).as_str()))
+            // Uninstalled programs can stay registered; Store apps have no path.
+            .filter(|(id, _, _)| !Path::new(id).is_absolute() || Path::new(id).exists())
             .map(|(id, name, _)| {
-                let stem = Path::new(&id).file_stem().map(|s| s.to_string_lossy().into_owned());
-                let name = match stem {
-                    Some(stem) if name.eq_ignore_ascii_case(&id) => stem,
-                    _ => name,
+                let name = if name.eq_ignore_ascii_case(&id) {
+                    description(Path::new(&id))
+                        .or_else(|| Path::new(&id).file_stem().map(|s| s.to_string_lossy().into_owned()))
+                        .unwrap_or(name)
+                } else {
+                    name
                 };
                 AssocApp { id, name }
             })
@@ -558,6 +596,16 @@ mod tests {
         let notepad = apps.iter().find(|a| a.name.contains("Notepad")).map(|a| a.id.clone());
         let without = assoc::apps(&file, notepad.as_deref().map(Path::new)).unwrap();
         assert_eq!(without.len() + 1, apps.len());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn reads_the_file_description_of_a_program() {
+        let windir = std::env::var("SystemRoot").unwrap_or_else(|_| r"C:\Windows".into());
+        let notepad = Path::new(&windir).join("System32").join("notepad.exe");
+        let name = assoc::description(&notepad).unwrap_or_default();
+        assert!(name.to_lowercase().contains("notepad") || name.to_lowercase().contains("poznámkový"), "{name:?}");
+        assert_eq!(assoc::description(&Path::new(&windir).join("no such program.exe")), None);
     }
 
     #[test]

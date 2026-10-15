@@ -40,7 +40,7 @@ ashpd = { version = "0.13", default-features = false, features = ["tokio", "open
 [target."cfg(windows)".dependencies]
 clipboard-win = "5.4.1"
 # "Open with" submenu: the applications the shell recommends for a file type.
-windows = { version = "0.62", features = ["Win32_System_Com", "Win32_UI_Shell"] }
+windows = { version = "0.62", features = ["Win32_Storage_FileSystem", "Win32_System_Com", "Win32_UI_Shell"] }
 
 [profile.release]
 codegen-units = 1
