@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.9" date="2026-10-15">
+      <description>
+        <p>The Excel plugin shows sheets as Excel does: fonts, colours, borders, number formats such as currencies, percentages and dates, merged cells and column widths. The Open with menu shows the real names of applications and leaves out uninstalled ones.</p>
+      </description>
+    </release>
     <release version="0.4.8" date="2026-10-15">
       <description>
         <p>On Windows the Open with menu lists the applications the system recommends for the file, for example Excel for Excel files. The system "Open with" dialog now opens for files whose path contains a space.</p>
