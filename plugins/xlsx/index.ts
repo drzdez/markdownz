@@ -27,6 +27,20 @@ function fontFamily(name: string): string {
   return `'${name.replace(/['"\\;]/g, "")}',Aptos,Calibri,Carlito,'Segoe UI',sans-serif`;
 }
 
+let measure: CanvasRenderingContext2D | null | undefined;
+
+/** Width of one line of text in px (canvas; an estimate where there is none, e.g. in tests). */
+function textWidth(text: string, font: Font): number {
+  const size = font.size ?? 11;
+  if (measure === undefined) {
+    measure = null;
+    if (typeof document !== "undefined" && !navigator.userAgent.includes("jsdom")) measure = document.createElement("canvas").getContext("2d");
+  }
+  if (!measure) return text.length * size * 0.75;
+  measure.font = `${font.italic ? "italic " : ""}${font.bold ? "bold " : ""}${size}pt ${fontFamily(font.name ?? "Calibri")}`;
+  return measure.measureText(text).width;
+}
+
 /** CSS declarations of a font, leaving out what equals the sheet's default font. */
 function fontCss(font: Font | undefined, base: Font): string[] {
   if (!font) return [];
@@ -148,6 +162,34 @@ export function sheetHtml(sheet: Sheet, book: Workbook): { html: string; rows: n
     const v = sheet.rows.get(r)?.get(c)?.value;
     return v === undefined || v === "";
   };
+
+  // Text runs on over empty cells to the right, as in Excel: where it goes past the
+  // used range (all text in column A, say), the empty columns it needs are added.
+  const left = new Map<number, number>();
+  let tableWidth = 0;
+  for (const c of cols) {
+    left.set(c, tableWidth);
+    tableWidth += width(c);
+  }
+  let reach = 0;
+  for (const r of rows) {
+    const cells = sheet.rows.get(r);
+    if (!cells) continue;
+    // Only the last cell with a value in the row can run on past the last column.
+    let last = -1;
+    for (const [c, cell] of cells) if (left.has(c) && cell.value !== undefined && cell.value !== "" && c > last) last = c;
+    const cell = cells.get(last);
+    if (!cell || typeof cell.value !== "string" || cell.error || covered.has(`${r}:${last}`) || spans.has(`${r}:${last}`)) continue;
+    const style = book.styles[cell.style] ?? book.styles[0];
+    if (style.wrap || ((style.horizontal && ALIGN[style.horizontal]) || "left") !== "left") continue;
+    const text = formatText(cell.value, style.format).replace(/\r?\n/g, " ");
+    reach = Math.max(reach, left.get(last)! + textWidth(text, { ...book.font, ...style.font }) + 8 - tableWidth);
+  }
+  for (let c = (cols[cols.length - 1] ?? -1) + 1; reach > 0 && cols.length < COL_LIMIT; c++) {
+    if (sheet.hiddenCols.has(c)) continue;
+    cols.push(c);
+    reach -= width(c);
+  }
 
   const head = `<tr><th class="mdz-corner"></th>${cols.map((c) => `<th style="width:${width(c)}px;min-width:${width(c)}px">${columnName(c)}</th>`).join("")}</tr>`;
   const body: string[] = [];

@@ -1,8 +1,8 @@
 import { strToU8, zipSync } from "fflate";
 import { beforeAll, describe, expect, it } from "vitest";
-import { columnName, xlsxToMarkdown } from "./index";
+import { columnName, sheetHtml, xlsxToMarkdown } from "./index";
 import { SHORT_DATE, formatNumber, general, serialToDate, setLocaleForTests } from "./numfmt";
-import { readWorkbook } from "./workbook";
+import { readWorkbook, type Sheet, type Workbook } from "./workbook";
 
 const NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
 const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -129,5 +129,31 @@ describe("Excel plugin", () => {
     expect(md).toContain('<tr style="height:32px">');
     // The bottom border of C2 is also the top border of C3.
     expect(md).toMatch(/<td style="border-top:1px solid #000000"><div[^>]*>11 000 €/);
+  });
+
+  it("adds the empty columns that long text runs on over", () => {
+    const long = "1403 text files. 1382 unique files. 31 files ignored.";
+    const sheet: Sheet = {
+      name: "Data",
+      rows: new Map([
+        [0, new Map([[0, { value: long, style: 0 }]])],
+        [1, new Map([[0, { value: "short", style: 0 }]])],
+      ]),
+      lastRow: 1,
+      lastCol: 0,
+      colWidths: new Map(),
+      defaultColWidth: 64,
+      rowHeights: new Map(),
+      defaultRowHeight: 20,
+      hiddenRows: new Set(),
+      hiddenCols: new Set(),
+      merges: [],
+      gridLines: true,
+    };
+    const book: Workbook = { sheets: [sheet], styles: [{ format: "General", font: {} }], date1904: false, font: { size: 11 } };
+    const { html, cols } = sheetHtml(sheet, book);
+    // In Excel all of it shows in column A and the empty cells after it; here those columns exist too.
+    expect(cols).toBeGreaterThan(1);
+    expect(html).toContain(`<div class="spill" style="width:63px">${long}</div>`);
   });
 });
