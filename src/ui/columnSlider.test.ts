@@ -1,6 +1,6 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SheetState } from "../formats/sheets";
-import { ColumnSlider } from "./columnSlider";
+import { ColumnSlider, SLIDER_IDLE_MS } from "./columnSlider";
 
 /** A sheet of columns A–J, 100 px each, showing C–E. */
 const sheet = {
@@ -58,5 +58,32 @@ describe("column slider", () => {
       [4, 6],
       [7, 9],
     ]);
+  });
+
+  it("hides itself when left alone or when the document scrolls", () => {
+    vi.useFakeTimers();
+    try {
+      const { s } = slider();
+      vi.advanceTimersByTime(SLIDER_IDLE_MS + 1);
+      expect(s.key).toBeUndefined();
+      // While the pointer is over it, it stays, also when the document scrolls.
+      s.show(sheet);
+      s.element.dispatchEvent(new MouseEvent("pointerenter"));
+      vi.advanceTimersByTime(SLIDER_IDLE_MS * 2);
+      s.scrolled();
+      expect(s.key).toBe("sheet:Data");
+      s.element.dispatchEvent(new MouseEvent("pointerleave"));
+      vi.advanceTimersByTime(100);
+      s.scrolled();
+      // Scrolling right after it showed is the view settling.
+      s.show(sheet);
+      s.scrolled();
+      expect(s.key).toBe("sheet:Data");
+      vi.advanceTimersByTime(600);
+      s.scrolled();
+      expect(s.key).toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

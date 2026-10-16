@@ -2,10 +2,14 @@
 // two stops, like the width ruler, for the first and last column shown on
 // screen and paper. Dragging a stop moves that edge, dragging the band between
 // them moves the whole part; stops snap to the column edges. Double-click
-// shows all columns. The rows shown stay as they are.
+// shows all columns. The rows shown stay as they are. It hides itself a few
+// seconds after you leave it, or when the document scrolls.
 
 import { columnName, type SheetState } from "../formats/sheets";
 import { el } from "./overlay";
+
+/** The slider hides this long after the pointer left it. */
+export const SLIDER_IDLE_MS = 4000;
 
 export class ColumnSlider {
   readonly element = el("div", { className: "mdz-colslider" });
@@ -21,6 +25,11 @@ export class ColumnSlider {
   private last = 0;
   /** Left edges of the columns in % of the strip, and 100 at the end. */
   private edges: number[] = [];
+  private timer: ReturnType<typeof setTimeout> | undefined;
+  private hovering = false;
+  private dragging = false;
+  /** When it was shown: scrolling right after that is the view settling, not you. */
+  private shownAt = 0;
 
   constructor(
     /** You chose columns `first`–`last` (column numbers of the sheet). */
@@ -43,6 +52,25 @@ export class ColumnSlider {
     });
     for (const stop of this.stops) stop.title = "Drag to choose the first or last column; double-click for all columns";
     this.band.title = "Drag to move the part shown; double-click for all columns";
+    this.element.addEventListener("pointerenter", () => {
+      this.hovering = true;
+      clearTimeout(this.timer);
+    });
+    this.element.addEventListener("pointerleave", () => {
+      this.hovering = false;
+      this.idle();
+    });
+  }
+
+  /** Hides the slider after a while unless you use it. */
+  private idle(): void {
+    clearTimeout(this.timer);
+    if (!this.hovering && !this.dragging && !this.element.hidden) this.timer = setTimeout(() => this.hide(), SLIDER_IDLE_MS);
+  }
+
+  /** The document scrolled: the slider goes unless you are using it. */
+  scrolled(): void {
+    if (!this.hovering && !this.dragging && performance.now() - this.shownAt > 500) this.hide();
   }
 
   /** The sheet whose columns are shown, or none. */
@@ -71,11 +99,14 @@ export class ColumnSlider {
     this.first = index(sheet.cols[0]);
     this.last = Math.max(this.first, index(sheet.cols[1]));
     this.name.textContent = `Columns of “${sheet.name}”`;
+    if (this.element.hidden) this.shownAt = performance.now();
     this.element.hidden = false;
     this.place();
+    this.idle();
   }
 
   hide(): void {
+    clearTimeout(this.timer);
     this.element.hidden = true;
   }
 
@@ -121,6 +152,8 @@ export class ColumnSlider {
     const count = sheet.columns.length;
     const start = { first: this.first, last: this.last, column: this.columnAt(down.clientX) };
     this.label.hidden = false;
+    this.dragging = true;
+    clearTimeout(this.timer);
     const move = (e: PointerEvent) => {
       if (what === "first") this.first = Math.min(this.edgeAt(e.clientX), this.last);
       else if (what === "last") this.last = Math.max(this.edgeAt(e.clientX) - 1, this.first);
@@ -136,6 +169,8 @@ export class ColumnSlider {
       target.removeEventListener("pointerup", up);
       target.removeEventListener("pointercancel", up);
       this.label.hidden = true;
+      this.dragging = false;
+      this.idle();
       if (this.first !== start.first || this.last !== start.last) this.done(sheet, sheet.columns[this.first].c, sheet.columns[this.last].c);
     };
     target.addEventListener("pointermove", move);

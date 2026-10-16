@@ -804,6 +804,13 @@ export class App {
         },
       );
     }
+    // Your page break, for every format (Excel, Word, … cannot take markers).
+    items.push(null, {
+      label: "Page break above",
+      detail: target.localBreak ? "Your page break, saved on this computer; click to remove it" : `Your page break above ${target.label}, saved on this computer`,
+      className: check(!!target.localBreak),
+      action: () => this.setPageBreak(tab.path, target.anchor, target.label, !target.localBreak),
+    });
     // Markers written into the file, above the block (the same as the marks' buttons do).
     const add = (value: string) => () => void this.markAction(tab, { type: "insert", before: target.line, text: `<!-- markdownz: ${value} -->` });
     const above = `Writes a line into the .md file right above ${target.label}`;

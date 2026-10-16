@@ -102,7 +102,10 @@ class MarkdownView implements DocumentView {
     host: ViewHost,
     private toMarkdown?: BytesToMarkdown,
   ) {
-    this.element.addEventListener("scroll", () => host.onScroll());
+    this.element.addEventListener("scroll", () => {
+      host.onScroll();
+      this.slider?.scrolled();
+    });
     this.element.addEventListener("click", (e) => {
       const target = e.target as Element;
       const link = target.closest("a");
@@ -209,7 +212,7 @@ class MarkdownView implements DocumentView {
     const notes = pages?.notes;
     // Markers in a converted file come from the conversion (e.g. one page per TIFF page) and cannot be edited.
     const marks = this.toMarkdown ? [] : notes?.marks;
-    this.marks.set(notes ? { blocks: notes.blocks, marks: marks!, turnable: notes.turnable, pageStarts: notes.pageStarts } : null);
+    this.marks.set(notes ? { blocks: notes.blocks, marks: marks!, turnable: notes.turnable, pageStarts: notes.pageStarts, inFile: !this.toMarkdown } : null);
     pages?.dispose();
   }
 
@@ -328,6 +331,8 @@ class MarkdownView implements DocumentView {
     const ranges = dropBlankPages(laidOut, content);
     measure.remove();
     const pageNotes = notes(ranges);
+    // Converted files (Excel, Word, …) cannot take markers: their marks set your exceptions.
+    pageNotes.inFile = !this.toMarkdown;
     // Parts of Excel sheets: said above the pages and in the print dialog.
     pageNotes.summary.push(...sheets.notes);
 

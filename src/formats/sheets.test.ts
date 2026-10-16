@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LocalException } from "../print/orientation";
-import { columnsChoice, columnsCut, fitsOnePageTall, isSheet, parseRangeText, prepareSheetsForPaper, prepareSheetsForScreen, rangeText } from "./sheets";
+import { changed, columnsChoice, columnsCut, fitsOnePageTall, isSheet, parseRangeText, prepareSheetsForPaper, prepareSheetsForScreen, rangeText } from "./sheets";
 
 /** A sheet as the xlsx plugin writes it: A–D, rows 1–5, "Title" merged over A1:D1. */
 function sheet(attributes: string): HTMLElement {
@@ -97,6 +97,24 @@ describe("Excel sheets on paper", () => {
     // All columns of the whole sheet: no choice needed.
     expect(columnsChoice(full, 0, 3)).toBeUndefined();
     expect(columnsChoice(full, 1, 3)).toBe("B1:D5");
+  });
+
+  it("marks your choice only when it changes what is shown", () => {
+    // The whole sheet is your exception where the print area is the standard, not where the whole sheet is.
+    const [whole] = prepareSheetsForScreen(sheet(' data-mdz-print-area="2,1,3,2"'), "printArea", yours({ area: "all" }));
+    expect(changed(whole)).toBe(true);
+    const [standard] = prepareSheetsForScreen(sheet(' data-mdz-print-area="2,1,3,2"'), "all", yours({ area: "all" }));
+    expect(changed(standard)).toBe(false);
+    const [noArea] = prepareSheetsForScreen(sheet(""), "printArea", yours({ area: "all" }));
+    expect(changed(noArea)).toBe(false);
+    const [printArea] = prepareSheetsForScreen(sheet(' data-mdz-print-area="2,1,3,2"'), "printArea", yours({ area: "printArea" }));
+    expect(changed(printArea)).toBe(false);
+    const [part] = prepareSheetsForScreen(sheet(""), "printArea", yours({ area: "A1:B5" }));
+    expect(changed(part)).toBe(true);
+    const [width] = prepareSheetsForScreen(sheet(""), "printArea", yours({ fit: "width" }));
+    expect(changed(width)).toBe(false);
+    const [page] = prepareSheetsForScreen(sheet(""), "printArea", yours({ fit: "page" }));
+    expect(changed(page)).toBe(true);
   });
 
   it("reads and writes ranges of cells", () => {

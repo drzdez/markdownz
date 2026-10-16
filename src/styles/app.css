@@ -503,6 +503,12 @@ button {
   background: #2da44e;
 }
 
+/* Your exception the same as without it: it changes nothing, so it does not stand out. */
+.mdz-orient-bracket.same {
+  background: var(--muted);
+  opacity: 0.6;
+}
+
 .mdz-orient-bracket.portrait {
   background-image: repeating-linear-gradient(transparent 0 4px, var(--bg) 4px 7px);
 }
@@ -592,6 +598,11 @@ button {
 .mdz-orient-label.yours {
   border-color: #2da44e;
   color: #2da44e;
+}
+
+.mdz-orient-label.yours.same {
+  border-color: var(--border);
+  color: var(--muted);
 }
 
 .mdz-orient-label.rule {
@@ -927,7 +938,11 @@ img.mdz-wide {
 .mdz-colslider {
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 3;
+  box-sizing: border-box;
+  height: 26px;
+  /* Over the document, so showing it moves nothing. */
+  margin-bottom: -26px;
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1096,11 +1111,17 @@ img.mdz-wide {
   font: 12px/1.5 system-ui, sans-serif;
   cursor: pointer;
 }
-.page-sheet-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 4px;
+/* Your choice for a sheet: green, like your exceptions among the orientation marks. */
+.mdz-area-group.yours > .mdz-area-tag,
+.mdz-area-group.yours > .mdz-area-menu {
+  border-color: #2da44e;
+  color: #2da44e;
+  font-weight: 600;
+}
+/* Tags of Excel sheets beside the pages of the page view. */
+.mdz-orient-row .mdz-area-group {
+  pointer-events: auto;
+  white-space: nowrap;
 }
 .mdz-area-menu {
   padding: 1px 6px;

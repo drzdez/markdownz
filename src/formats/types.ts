@@ -139,6 +139,8 @@ export interface PageNotes {
   turnable: boolean;
   /** Where each page after the first starts, for the page lines in the continuous view. */
   pageStarts: PageStart[];
+  /** Markers can be written into the file (Markdown); other formats use your exceptions. */
+  inFile?: boolean;
   target(index: number): OrientationTarget | null;
   /** The menu target for a block (the one under the pointer) shown on page `page`. */
   blockTarget(block: number, page: number): OrientationTarget | null;

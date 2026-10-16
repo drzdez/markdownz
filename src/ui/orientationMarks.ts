@@ -66,6 +66,21 @@ export interface MarksData {
   marks: MarkInfo[];
   turnable: boolean;
   pageStarts: PageStart[];
+  /**
+   * Markers can be written into the file (Markdown); false for other formats
+   * (Excel, Word, …), whose buttons set your exceptions on this computer instead.
+   */
+  inFile?: boolean;
+}
+
+/** How a block would be printed without your exception: marker, the file's page setup, or the print settings. */
+export function standardOrientation(b: BlockInfo): Orientation {
+  return b.marker ?? b.file ?? (b.rule ? "landscape" : "portrait");
+}
+
+/** Your exception changes nothing: the block would be printed so anyway (it is not highlighted). */
+export function sameAsStandard(b: BlockInfo): boolean {
+  return !!b.local && b.local === standardOrientation(b);
 }
 
 /** A line across the text where a page starts. */
@@ -104,6 +119,7 @@ type Button = [string, string, MarkAction | null, boolean?];
  * page starts with, cycling landscape → portrait → automatic, by a marker in the file.
  */
 function fileTurnButton(data: MarksData, block: number, now?: Orientation): Button {
+  if (data.inFile === false) return yourTurnButton(data, block);
   const b = data.blocks[block];
   if (!b || b.line < 0 || !data.turnable) return ["⟳", data.turnable ? "" : "Every page is landscape (print settings)", null];
   const m = data.marks.find((x) => x.before === block && x.line >= 0 && !x.moves && (x.value === "landscape" || x.value === "portrait"));
@@ -147,15 +163,21 @@ export function pageLines(data: MarksData): LineSpec[] {
 export function pageTag(data: MarksData, p: PageStart): LabelSpec | null {
   if (p.cause === "marker" || p.cause === "yours") return null;
   const block = data.blocks[p.block];
-  const split = p.fraction > 0.02 && block && block.line >= 0;
+  const inFile = data.inFile !== false;
+  const split = p.fraction > 0.02 && block && (!inFile || block.line >= 0);
   const cause = { marker: "page break marker", yours: "your page break", turn: "the page turns", auto: "the page is full" }[p.cause];
+  const startAbove: MarkAction | null = !split
+    ? null
+    : inFile
+      ? { type: "insert", before: block.line, text: "<!-- markdownz: page break -->" }
+      : { type: "break", anchor: block.anchor, label: block.label, on: true };
   return {
     at: p.block,
     kind: "page",
     text: `page ${p.page}${p.landscape ? " · landscape" : ""}`,
     title: p.page === 1 ? "Page 1" : `Page ${p.page} starts here: ${cause}.${split ? ` It splits ${block.label}.` : ""}`,
     buttons: [
-      ["⤒", split ? `Start page ${p.page} above ${block.label} instead (writes a page break marker)` : "", split ? { type: "insert", before: block.line, text: "<!-- markdownz: page break -->" } : null],
+      ["⤒", split ? `Start page ${p.page} above ${block.label} instead (${inFile ? "writes a page break marker" : "your page break, saved on this computer"})` : "", startAbove],
       fileTurnButton(data, p.block, p.landscape ? "landscape" : "portrait"),
     ],
   };
@@ -193,9 +215,13 @@ export function markSpecs(data: MarksData): { brackets: BracketSpec[]; labels: L
   const brackets: BracketSpec[] = [];
   const labels: LabelSpec[] = [];
   const lineOf = (before: number) => data.blocks[before]?.line ?? -1;
+  const inFile = data.inFile !== false;
 
   data.blocks.forEach((b, i) => {
-    if (b.local) brackets.push({ from: i, to: i, kind: `yours ${b.local}`, lane: 0, title: `${b.local}: your exception` });
+    if (b.local) {
+      const same = sameAsStandard(b);
+      brackets.push({ from: i, to: i, kind: `${same ? "same" : "yours"} ${b.local}`, lane: 0, title: `${b.local}: your exception${same ? ", the same as without it" : ""}` });
+    }
     else if (b.marker) brackets.push({ from: i, to: i, kind: `marker ${b.marker}`, lane: 0, title: `${b.marker}: marker in the file` });
     else if (b.file) brackets.push({ from: i, to: i, kind: `marker ${b.file}`, lane: 0, title: `${b.file}: page setup in the file` });
     if (b.rule && !b.decided && !b.moved) brackets.push({ from: i, to: i, kind: "rule", lane: 1, title: "landscape: wide content, print settings" });
@@ -207,6 +233,14 @@ export function markSpecs(data: MarksData): { brackets: BracketSpec[]; labels: L
   const PAGE_BREAK = "<!-- markdownz: page break -->";
   /** The ✂ button: a page break marker above the block, written into the file or removed. */
   const breakButton = (block: number, insertBefore: number): [string, string, MarkAction | null, boolean] => {
+    if (!inFile) {
+      // Other formats: your page break, saved on this computer.
+      const b = data.blocks[block];
+      if (!b) return ["✂︎", "", null, false];
+      return b.localBreak
+        ? ["✂︎", "Page break above: on (your page break; click to remove it)", { type: "break", anchor: b.anchor, label: b.label, on: false }, true]
+        : ["✂︎", "Start a new page here (your page break, saved on this computer)", { type: "break", anchor: b.anchor, label: b.label, on: true }, false];
+    }
     const existing = breakAbove(block);
     return existing
       ? ["✂︎", "Page break above: on (click to remove the page break marker from the file)", { type: "remove", line: existing.line }, true]
@@ -229,30 +263,33 @@ export function markSpecs(data: MarksData): { brackets: BracketSpec[]; labels: L
     // A moved turn stays on its side of the block it moves.
     const up = rule >= 0 && m.value === "landscape end" ? Math.max(m.before - 1, rule + 1) : m.before - 1;
     const down = rule >= 0 && m.value === "landscape start" ? Math.min(m.before + 1, rule) : m.before + 1;
+    const markerText = `${m.value === "page break" ? "✂︎" : "⟳"} ${m.value}${m.moves ? " · moved turn" : ""}${m.value !== "page break" && breakAbove(m.before) ? " · page break" : ""}${m.status === "ok" ? "" : ` · ${m.status}`}`;
+    const fileButtons: Button[] = [
+      ["↑", "Move up one block (edits this line of the file)", up >= 0 && up !== m.before ? { type: "move", line: m.line, before: lineOf(up) } : null],
+      ["↓", "Move down one block", down >= 0 && down <= data.blocks.length && down !== m.before ? { type: "move", line: m.line, before: lineOf(down) } : null],
+      // A single marker turns with ⟳ like everywhere else; a range end only swaps.
+      ...(turnable && !m.value.includes(" ")
+        ? [fileTurnButton(data, m.before)]
+        : turnable
+          ? [["⇄", `Change to ${flipped}`, { type: "replace", line: m.line, text: `<!-- markdownz: ${flipped} -->` }] as Button]
+          : []),
+      ...(m.value === "page break" ? [fileTurnButton(data, m.before)] : [breakButton(m.before, m.line)]),
+      (() => {
+        const pageBreak = m.value !== "page break" ? breakAbove(m.before) : undefined;
+        const block = data.blocks[m.before] ?? data.blocks[data.blocks.length - 1];
+        const ghost = block && { anchor: block.anchor, text: `${m.value === "page break" ? "✂" : "⟳"} ${m.value}${pageBreak ? " · page break" : ""}`, kind: m.moves ? "moved" : "marker", restore: { type: "undo" } as MarkAction };
+        return pageBreak
+          ? (["✕", `Remove both: the ${m.value} marker and the page break`, { type: "remove-lines", lines: [m.line, pageBreak.line], ghost }] as Button)
+          : (["✕", "Remove the marker from the file", { type: "remove", line: m.line, ghost }] as Button);
+      })(),
+    ];
     labels.push({
       at: m.before,
       kind: `${m.moves ? "moved" : "marker"} ${m.status}`,
-      text: `${m.value === "page break" ? "✂︎" : "⟳"} ${m.value}${m.moves ? " · moved turn" : ""}${m.value !== "page break" && breakAbove(m.before) ? " · page break" : ""}${m.status === "ok" ? "" : ` · ${m.status}`}`,
-      title,
-      buttons: [
-        ["↑", "Move up one block (edits this line of the file)", up >= 0 && up !== m.before ? { type: "move", line: m.line, before: lineOf(up) } : null],
-        ["↓", "Move down one block", down >= 0 && down <= data.blocks.length && down !== m.before ? { type: "move", line: m.line, before: lineOf(down) } : null],
-        // A single marker turns with ⟳ like everywhere else; a range end only swaps.
-        ...(turnable && !m.value.includes(" ")
-          ? [fileTurnButton(data, m.before)]
-          : turnable
-            ? [["⇄", `Change to ${flipped}`, { type: "replace", line: m.line, text: `<!-- markdownz: ${flipped} -->` }] as Button]
-            : []),
-        ...(m.value === "page break" ? [fileTurnButton(data, m.before)] : [breakButton(m.before, m.line)]),
-        (() => {
-          const pageBreak = m.value !== "page break" ? breakAbove(m.before) : undefined;
-          const block = data.blocks[m.before] ?? data.blocks[data.blocks.length - 1];
-          const ghost = block && { anchor: block.anchor, text: `${m.value === "page break" ? "✂" : "⟳"} ${m.value}${pageBreak ? " · page break" : ""}`, kind: m.moves ? "moved" : "marker", restore: { type: "undo" } as MarkAction };
-          return pageBreak
-            ? (["✕", `Remove both: the ${m.value} marker and the page break`, { type: "remove-lines", lines: [m.line, pageBreak.line], ghost }] as Button)
-            : (["✕", "Remove the marker from the file", { type: "remove", line: m.line, ghost }] as Button);
-        })(),
-      ],
+      text: markerText,
+      title: inFile ? title : `${title}\nFrom the conversion of the file; it cannot be changed here.`,
+      // Markers of a converted file come from the conversion: shown, not edited.
+      buttons: inFile ? fileButtons : fileButtons.map(([symbol, hint]) => [symbol, hint, null] as Button),
     });
   }
 
@@ -269,22 +306,28 @@ export function markSpecs(data: MarksData): { brackets: BracketSpec[]; labels: L
       at: i,
       kind: `rule${b.moved ? " moved" : ""}`,
       text: `🔒 landscape · wide content${b.moved ? " · moved" : ""}${overruled}${breakAbove(i) ? " · page break" : ""}`,
-      title: "The print settings turn this page (Wide tables). Moving the turn writes a marker into the file.",
+      title: `The print settings turn this page (Wide tables). ${inFile ? "Moving the turn writes a marker into the file." : "Turning more blocks sets your exceptions on this computer."}`,
       buttons: [
         [
           "⤒",
-          "Turn one block earlier",
+          inFile ? "Turn one block earlier" : "Turn the block above too (your exception)",
           earlier >= 0 && !b.decided
-            ? startShift
+            ? !inFile
+              ? { type: "local", anchor: data.blocks[earlier].anchor, label: data.blocks[earlier].label, orientation: "landscape" }
+              : startShift
               ? { type: "move", line: startShift.line, before: lineOf(earlier) }
               : { type: "insert", before: lineOf(earlier), text: `<!-- markdownz: landscape start · moves rule of ${ref} -->` }
             : null,
         ],
         [
           "⤓",
-          "Turn back one block later",
+          inFile ? "Turn back one block later" : "Turn the block below too (your exception)",
           later <= data.blocks.length && !b.decided
-            ? endShift
+            ? !inFile
+              ? later - 1 < data.blocks.length
+                ? { type: "local", anchor: data.blocks[later - 1].anchor, label: data.blocks[later - 1].label, orientation: "landscape" }
+                : null
+              : endShift
               ? { type: "move", line: endShift.line, before: lineOf(later) }
               : { type: "insert", before: lineOf(later), text: `<!-- markdownz: landscape end · moves rule of ${ref} -->` }
             : null,
@@ -319,11 +362,13 @@ export function markSpecs(data: MarksData): { brackets: BracketSpec[]; labels: L
     if (!b.local) return;
     const to = (j: number): MarkAction | null =>
       j >= 0 && j < data.blocks.length ? { type: "reanchor", from: b.anchor, to: data.blocks[j].anchor, label: data.blocks[j].label, orientation: b.local! } : null;
+    // Only what changes the print stands out; an exception the same as the standard is grey.
+    const same = sameAsStandard(b);
     labels.push({
       at: i,
-      kind: "yours",
-      text: `⟳ ${b.local} · your exception${b.localBreak ? " · page break" : ""}`,
-      title: `Your exception for ${b.label}, saved on this computer; it wins over markers and settings.`,
+      kind: same ? "yours same" : "yours",
+      text: `⟳ ${b.local} · your exception${same ? " · as without it" : ""}${b.localBreak ? " · page break" : ""}`,
+      title: `Your exception for ${b.label}, saved on this computer; it wins over markers and settings.${same ? ` The block would be ${b.local} without it too.` : ""}`,
       buttons: [
         ["↑", "Attach it to the block above", to(i - 1)],
         ["↓", "Attach it to the block below", to(i + 1)],

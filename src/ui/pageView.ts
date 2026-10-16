@@ -77,7 +77,10 @@ export class PageView {
     // The column slider stays at the top while the pages scroll.
     this.element.append(this.slider.element, this.info, this.status, this.grid);
     this.info.hidden = true;
-    this.element.addEventListener("scroll", () => host.onScroll());
+    this.element.addEventListener("scroll", () => {
+      host.onScroll();
+      this.slider.scrolled();
+    });
     this.element.addEventListener("contextmenu", (e) => this.onContextMenu(e));
     // Sheets are filled only near the visible area; long documents would otherwise clone a lot of DOM.
     this.observer = new IntersectionObserver((entries) => entries.forEach((e) => e.isIntersecting && this.fill(e.target as HTMLElement)), {
@@ -136,42 +139,19 @@ export class PageView {
   private showInfo(pages: PrintPages): void {
     const notes = pages.notes;
     const sheets = pages.sheetStates ?? [];
-    this.info.hidden = !notes && !sheets.length;
-    // Excel sheets: the same tags as above the sheets in the continuous view, and the column slider.
+    // Excel sheets: the column slider stays while only some columns are shown (the tags are beside the pages).
     const sliding = sheets.find((s) => s.key === this.slider.key);
     if (sliding && columnsCut(sliding)) this.slider.show(sliding);
     else this.slider.hide();
-    const tags = sheets.length
-      ? [
-          el(
-            "div",
-            { className: "page-sheet-tags" },
-            ...sheets.map((sheet, i) => {
-              const group = sheetTag(sheet, i, `${sheet.name}: `);
-              group.querySelector(".mdz-area-tag")!.addEventListener("click", () => {
-                if (this.slider.key === sheet.key) this.slider.hide();
-                else this.slider.show(sheet);
-              });
-              group.querySelector(".mdz-area-menu")!.addEventListener("click", () => {
-                const box = group.getBoundingClientRect();
-                this.host.sheetMenu(sheet, box.left, box.bottom + 4);
-              });
-              return group;
-            }),
-          ),
-        ]
-      : [];
-    if (!notes) {
-      this.info.replaceChildren(...tags);
-      return;
-    }
+    this.info.hidden = !notes;
+    if (!notes) return;
     const lines = notes.summary.map((line) => el("div", { textContent: line }));
     const hint = el("div", { className: "mdz-hint", textContent: "Right-click a page to turn it or add a marker; the labels beside the pages move or remove markers." });
-    const parts: HTMLElement[] = [...tags, ...lines, hint];
+    const parts: HTMLElement[] = [...lines, hint];
     if (notes.orphans.length) {
       const remove = el("button", { className: "mdz-settings-button", textContent: "Remove them" });
       remove.addEventListener("click", () => this.host.removeOrphans(notes.orphans));
-      parts.splice(tags.length + lines.length, 0, el("div", {}, remove));
+      parts.splice(lines.length, 0, el("div", {}, remove));
     }
     this.info.replaceChildren(...parts);
   }
@@ -230,6 +210,20 @@ export class PageView {
     for (const s of this.sheets) if (s.filled) this.drawMarks(s);
   }
 
+  /** The tag of an Excel sheet beside the page where it starts: click for the column slider, ▾ for the menu. */
+  private sheetTag(sheet: SheetState, index: number): HTMLElement {
+    const group = sheetTag(sheet, index, `${sheet.name}: `);
+    group.querySelector(".mdz-area-tag")!.addEventListener("click", () => {
+      if (this.slider.key === sheet.key) this.slider.hide();
+      else this.slider.show(sheet);
+    });
+    group.querySelector(".mdz-area-menu")!.addEventListener("click", () => {
+      const box = group.getBoundingClientRect();
+      this.host.sheetMenu(sheet, box.left, box.bottom + 4);
+    });
+    return group;
+  }
+
   /**
    * Orientation marks over a sheet, like in the continuous view: brackets beside
    * the parts of blocks on each page, labels where a block starts. Drawn over the
@@ -238,9 +232,10 @@ export class PageView {
   private drawMarks(s: SheetBox): void {
     s.box.querySelector(":scope > .mdz-orient-layer")?.remove();
     const notes = this.pages?.notes;
-    if (!notes || !this.host.showMarks()) return;
-    const data = { blocks: notes.blocks, marks: notes.marks, turnable: notes.turnable, pageStarts: notes.pageStarts };
-    if (!hasMarks(data)) return;
+    const states = this.pages?.sheetStates ?? [];
+    const data = notes && this.host.showMarks() ? { blocks: notes.blocks, marks: notes.marks, turnable: notes.turnable, pageStarts: notes.pageStarts, inFile: notes.inFile } : null;
+    const marks = !!data && hasMarks(data);
+    if (!marks && !states.length) return;
     const layer = el("div", { className: "mdz-orient-layer page" });
     const origin = s.box.getBoundingClientRect();
     const parts: HTMLElement[] = [];
@@ -253,7 +248,24 @@ export class PageView {
     }
     const beside = origin.left - edge >= 260;
     const rows = new LabelRows(parts, beside ? -Infinity : Infinity);
-    const { brackets, labels } = markSpecs(data);
+    // Excel sheets: their tag where the sheet starts.
+    if (states.length) {
+      for (const page of s.holder.querySelectorAll<HTMLElement>(".mdz-md-page")) {
+        const clip = [...page.querySelectorAll<HTMLElement>(":scope > .mdz-md-clip")].pop();
+        if (!clip) continue;
+        const area = clip.getBoundingClientRect();
+        clip.querySelectorAll<HTMLTableElement>("table.mdz-excel").forEach((table, i) => {
+          const r = table.getBoundingClientRect();
+          if (states[i] && r.top >= area.top - 1 && r.top < area.bottom - 1) rows.add(this.sheetTag(states[i], i), r.top - origin.top, beside ? 22 : area.left - origin.left);
+        });
+      }
+    }
+    if (!marks) {
+      layer.replaceChildren(...parts);
+      s.box.append(layer);
+      return;
+    }
+    const { brackets, labels } = markSpecs(data!);
     // The pages on this sheet, in the order of its slots.
     const shownPages = s.side.slots.filter((x): x is number => x !== null);
     [...s.holder.querySelectorAll<HTMLElement>(".mdz-md-page")].forEach((page, n) => {
@@ -262,8 +274,8 @@ export class PageView {
       if (!clip || index === undefined) return;
       // A grey tag per page, to turn it with one click, like the page lines of the continuous view.
       const size = this.pages!.size(index);
-      const start = index === 0 ? { page: 1, block: 0, fraction: 0, cause: "auto" as const, landscape: false } : data.pageStarts[index - 1];
-      const tag = start && pageTag(data, { ...start, landscape: size.width > size.height });
+      const start = index === 0 ? { page: 1, block: 0, fraction: 0, cause: "auto" as const, landscape: false } : data!.pageStarts[index - 1];
+      const tag = start && pageTag(data!, { ...start, landscape: size.width > size.height });
       if (tag) {
         const area = clip.getBoundingClientRect();
         rows.add(labelElement(tag, (action) => this.host.orientation(action)), area.top - origin.top, beside ? 22 : area.left - origin.left);
@@ -291,7 +303,7 @@ export class PageView {
       }
       for (const l of labels) {
         const r = pieces.get(l.at);
-        const end = l.at === data.blocks.length && pieces.get(lastBlock) && lastBlock === data.blocks.length - 1 ? pieces.get(lastBlock)! : null;
+        const end = l.at === data!.blocks.length && pieces.get(lastBlock) && lastBlock === data!.blocks.length - 1 ? pieces.get(lastBlock)! : null;
         // A label belongs where its block starts (or below the last block of the document).
         const top = r && r.top >= area.top - 1 ? r.top : end && end.bottom <= area.bottom + 1 ? end.bottom : null;
         if (top === null) continue;

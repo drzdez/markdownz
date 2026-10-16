@@ -68,6 +68,8 @@ export interface SheetState {
   whole: string;
   /** What is shown now. */
   shown: string;
+  /** What the print settings alone would show. */
+  standard: string;
   /** Rows and columns kept, or none for the whole sheet. */
   crop?: number[];
   /** All columns of the sheet (index and width in px), for the column slider. */
@@ -111,7 +113,9 @@ export function sheetState(table: HTMLTableElement, mode: SheetArea, locals: Loc
   if (choice.area === "printArea" || (!choice.area && mode === "printArea")) crop = area;
   else if (choice.area && choice.area !== "all") crop = parseRangeText(choice.area) ?? undefined;
   // Nothing cut when the part covers all of the sheet.
-  if (crop && crop[0] <= all[0] && crop[1] <= all[1] && crop[2] >= all[2] && crop[3] >= all[3]) crop = undefined;
+  const covers = (part: number[]) => part[0] <= all[0] && part[1] <= all[1] && part[2] >= all[2] && part[3] >= all[3];
+  if (crop && covers(crop)) crop = undefined;
+  const standard = mode === "printArea" && area && !covers(area) ? area : all;
   const fileFit = fitsOnePageTall(table) ? "page" : undefined;
   return {
     key,
@@ -119,6 +123,7 @@ export function sheetState(table: HTMLTableElement, mode: SheetArea, locals: Loc
     printArea: area && rangeText(area),
     whole: rangeText(all),
     shown: crop ? rangeText(crop) : rangeText(all),
+    standard: rangeText(standard),
     crop,
     columns,
     rows: crop ? [Math.max(crop[0], all[0]), Math.min(crop[2], all[2])] : [all[0], all[2]],
@@ -171,6 +176,14 @@ export function sheetTagTitle(s: SheetState): string {
   return `${s.crop ? "Only a part of the sheet is shown, as it is printed." : "All of the sheet is shown."} On paper: ${s.fit === "page" ? "on one page" : "fitted to the page width"}. Click for the column slider, ▾ for more.`;
 }
 
+/**
+ * Your choice changes what the sheet shows: another part than the print settings
+ * would show (the whole sheet too, when they show the print area), or another fit on paper.
+ */
+export function changed(s: SheetState): boolean {
+  return (s.source === "yours" && s.shown !== s.standard) || (s.fitSource === "yours" && s.fit !== (s.fileFit ? "page" : "width"));
+}
+
 /** The tag of a sheet: what part is shown (click: column slider) and ▾ (menu). */
 export function sheetTag(s: SheetState, index: number, prefix = ""): HTMLElement {
   const tag = document.createElement("button");
@@ -186,7 +199,7 @@ export function sheetTag(s: SheetState, index: number, prefix = ""): HTMLElement
   menu.textContent = "▾";
   menu.title = "Print area, whole sheet, range, fit on paper";
   const group = document.createElement("span");
-  group.className = "mdz-area-group";
+  group.className = changed(s) ? "mdz-area-group yours" : "mdz-area-group";
   group.append(tag, menu);
   return group;
 }
