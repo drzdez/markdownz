@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.14" date="2026-10-16">
+      <description>
+        <p>In the page view the tags of Excel sheets sit beside the page where each sheet starts. The column slider hides itself when you leave it or scroll. Only what differs from the standard is highlighted: your choices for sheets and your orientation exceptions. Excel, Word and other converted formats can turn pages and start new pages too, as your exceptions on this computer, and the page menu has Page break above for every format.</p>
+      </description>
+    </release>
     <release version="0.4.13" date="2026-10-16">
       <description>
         <p>A column slider for Excel sheets: click the tag above a sheet and drag the stops or the band to choose and move the columns shown on screen and paper; ▾ beside the tag opens the menu as before.</p>
