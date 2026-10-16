@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.13" date="2026-10-16">
+      <description>
+        <p>A column slider for Excel sheets: click the tag above a sheet and drag the stops or the band to choose and move the columns shown on screen and paper; ▾ beside the tag opens the menu as before.</p>
+      </description>
+    </release>
     <release version="0.4.12" date="2026-10-16">
       <description>
         <p>The page view has the tags of the Excel sheets too, so you can choose the part of a sheet the pages show (print area, whole sheet or a range) and how it fits on paper.</p>
