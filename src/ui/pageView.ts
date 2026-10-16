@@ -8,7 +8,8 @@ import { bracketElement, hasMarks, labelElement, LabelRows, markSpecs, onGhostCh
 import { impose, orientSides, pageSetup, sheetGeometry, type PrintOptions, type SheetGeometry, type Side } from "../print/imposition";
 import { buildSheet } from "../print/printJob";
 import { el } from "./overlay";
-import { sheetTagText, sheetTagTitle, type SheetState } from "../formats/sheets";
+import { columnsCut, sheetTag, type SheetState } from "../formats/sheets";
+import { ColumnSlider } from "./columnSlider";
 
 const PX_PER_MM = 96 / 25.4;
 const GAP = 16;
@@ -44,6 +45,8 @@ export interface PageViewHost {
   showMarks(): boolean;
   /** Click on the tag of an Excel sheet: what part of it the pages show. */
   sheetMenu(sheet: SheetState, x: number, y: number): void;
+  /** The column slider of an Excel sheet: columns `first`–`last` are to be shown. */
+  sheetColumns(sheet: SheetState, first: number, last: number): void;
 }
 
 export class PageView {
@@ -64,9 +67,15 @@ export class PageView {
   key = "";
 
   private stopGhost = onGhostChange(() => this.refreshMarks());
+  /** The columns shown of one sheet (click on the tag of the sheet). */
+  private slider = new ColumnSlider(
+    (sheet, first, last) => this.host.sheetColumns(sheet, first, last),
+    () => this.slider.hide(),
+  );
 
   constructor(private host: PageViewHost) {
-    this.element.append(this.info, this.status, this.grid);
+    // The column slider stays at the top while the pages scroll.
+    this.element.append(this.slider.element, this.info, this.status, this.grid);
     this.info.hidden = true;
     this.element.addEventListener("scroll", () => host.onScroll());
     this.element.addEventListener("contextmenu", (e) => this.onContextMenu(e));
@@ -128,19 +137,26 @@ export class PageView {
     const notes = pages.notes;
     const sheets = pages.sheetStates ?? [];
     this.info.hidden = !notes && !sheets.length;
-    // Excel sheets: the same tags as above the sheets in the continuous view.
+    // Excel sheets: the same tags as above the sheets in the continuous view, and the column slider.
+    const sliding = sheets.find((s) => s.key === this.slider.key);
+    if (sliding && columnsCut(sliding)) this.slider.show(sliding);
+    else this.slider.hide();
     const tags = sheets.length
       ? [
           el(
             "div",
             { className: "page-sheet-tags" },
-            ...sheets.map((sheet) => {
-              const tag = el("button", { type: "button", className: "mdz-area-tag", textContent: `${sheet.name}: ${sheetTagText(sheet)}`, title: sheetTagTitle(sheet) });
-              tag.addEventListener("click", () => {
-                const box = tag.getBoundingClientRect();
+            ...sheets.map((sheet, i) => {
+              const group = sheetTag(sheet, i, `${sheet.name}: `);
+              group.querySelector(".mdz-area-tag")!.addEventListener("click", () => {
+                if (this.slider.key === sheet.key) this.slider.hide();
+                else this.slider.show(sheet);
+              });
+              group.querySelector(".mdz-area-menu")!.addEventListener("click", () => {
+                const box = group.getBoundingClientRect();
                 this.host.sheetMenu(sheet, box.left, box.bottom + 4);
               });
-              return tag;
+              return group;
             }),
           ),
         ]

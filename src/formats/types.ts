@@ -28,6 +28,8 @@ export interface ViewHost {
   orientationMenu?(target: OrientationTarget, x: number, y: number): void;
   /** Click on the tag above an Excel sheet: choose which part of it is shown. */
   sheetMenu?(sheet: SheetState, x: number, y: number): void;
+  /** The column slider of an Excel sheet: columns `first`–`last` are to be shown. */
+  sheetColumns?(sheet: SheetState, first: number, last: number): void;
 }
 
 export interface OutlineItem {

@@ -70,6 +70,12 @@ export interface SheetState {
   shown: string;
   /** Rows and columns kept, or none for the whole sheet. */
   crop?: number[];
+  /** All columns of the sheet (index and width in px), for the column slider. */
+  columns: { c: number; width: number }[];
+  /** First and last row shown. */
+  rows: [number, number];
+  /** First and last column shown. */
+  cols: [number, number];
   /** Who decided what is shown. */
   source: "yours" | "settings";
   /** The print settings' choice (Excel sheets). */
@@ -94,7 +100,10 @@ export function sheetState(table: HTMLTableElement, mode: SheetArea, locals: Loc
   const data = table.dataset;
   const key = data.mdzKey ?? `sheet:${data.mdzSheet ?? ""}`;
   const rows = [...(table.tBodies[0]?.rows ?? [])].map((r) => Number(r.dataset.r)).filter((r) => !Number.isNaN(r));
-  const cols = [...(table.tHead?.rows[0]?.cells ?? [])].map((c) => Number(c.dataset.c)).filter((c) => !Number.isNaN(c));
+  const columns = [...(table.tHead?.rows[0]?.cells ?? [])]
+    .filter((th) => th.dataset.c !== undefined)
+    .map((th) => ({ c: Number(th.dataset.c), width: parseFloat(th.style.width) || 64 }));
+  const cols = columns.map((c) => c.c);
   const all = [rows[0] ?? 0, cols[0] ?? 0, rows.at(-1) ?? 0, cols.at(-1) ?? 0];
   const area = data.mdzPrintArea ? numbers(data.mdzPrintArea) : undefined;
   const choice = sheetChoice(locals, key);
@@ -111,6 +120,9 @@ export function sheetState(table: HTMLTableElement, mode: SheetArea, locals: Loc
     whole: rangeText(all),
     shown: crop ? rangeText(crop) : rangeText(all),
     crop,
+    columns,
+    rows: crop ? [Math.max(crop[0], all[0]), Math.min(crop[2], all[2])] : [all[0], all[2]],
+    cols: crop ? [Math.max(crop[1], all[1]), Math.min(crop[3], all[3])] : [all[1], all[3]],
     source: choice.area ? "yours" : "settings",
     settings: mode,
     choice,
@@ -128,16 +140,55 @@ function sheetNote(s: SheetState): string {
   return parts.length ? `Excel sheet “${s.name}”: ${parts.join(", ")}.` : "";
 }
 
+/** Whether only some of the columns of a sheet are shown. */
+export function columnsCut(s: SheetState): boolean {
+  return !!s.columns.length && (s.cols[0] > s.columns[0].c || s.cols[1] < s.columns[s.columns.length - 1].c);
+}
+
+/**
+ * The area of your choice when the column slider shows columns `first`–`last`:
+ * the rows stay as shown. All of the sheet is "all", or no choice when the
+ * print settings show all of it anyway.
+ */
+export function columnsChoice(s: SheetState, first: number, last: number): string | undefined {
+  const all = s.columns.length ? [s.columns[0].c, s.columns[s.columns.length - 1].c] : [first, last];
+  const whole = parseRangeText(s.whole) ?? [];
+  if (first <= all[0] && last >= all[1] && s.rows[0] <= whole[0] && s.rows[1] >= whole[2]) {
+    return s.settings === "all" || !s.printArea ? undefined : "all";
+  }
+  return rangeText([s.rows[0], first, s.rows[1], last]);
+}
+
 /** The text of the tag of a sheet: what part is shown. */
 export function sheetTagText(s: SheetState): string {
   return s.crop
-    ? `${s.choice.area && s.choice.area !== "printArea" ? "Range" : "Print area"} ${s.shown} of ${s.whole} ▾`
-    : `Whole sheet ${s.whole}${s.printArea ? ` · print area ${s.printArea}` : ""} ▾`;
+    ? `${s.choice.area && s.choice.area !== "printArea" ? "Range" : "Print area"} ${s.shown} of ${s.whole}`
+    : `Whole sheet ${s.whole}${s.printArea ? ` · print area ${s.printArea}` : ""}`;
 }
 
 /** The tooltip of the tag of a sheet. */
 export function sheetTagTitle(s: SheetState): string {
-  return `${s.crop ? "Only a part of the sheet is shown, as it is printed." : "All of the sheet is shown."} On paper: ${s.fit === "page" ? "on one page" : "fitted to the page width"}. Click to choose.`;
+  return `${s.crop ? "Only a part of the sheet is shown, as it is printed." : "All of the sheet is shown."} On paper: ${s.fit === "page" ? "on one page" : "fitted to the page width"}. Click for the column slider, ▾ for more.`;
+}
+
+/** The tag of a sheet: what part is shown (click: column slider) and ▾ (menu). */
+export function sheetTag(s: SheetState, index: number, prefix = ""): HTMLElement {
+  const tag = document.createElement("button");
+  tag.type = "button";
+  tag.className = "mdz-area-tag";
+  tag.dataset.mdzSheetIndex = String(index);
+  tag.textContent = prefix + sheetTagText(s);
+  tag.title = sheetTagTitle(s);
+  const menu = document.createElement("button");
+  menu.type = "button";
+  menu.className = "mdz-area-menu";
+  menu.dataset.mdzSheetIndex = String(index);
+  menu.textContent = "▾";
+  menu.title = "Print area, whole sheet, range, fit on paper";
+  const group = document.createElement("span");
+  group.className = "mdz-area-group";
+  group.append(tag, menu);
+  return group;
 }
 
 /** Keeps the title rows of a sheet, which repeat at the top of its pages. */
@@ -181,12 +232,7 @@ export function prepareSheetsForScreen(article: HTMLElement, mode: SheetArea, lo
     const state = sheetState(table, mode, locals);
     if (state.crop) crop(table, state.crop, titleRows(table));
     // A tag above every sheet: what part is shown, and the menu to choose another.
-    const tag = document.createElement("button");
-    tag.type = "button";
-    tag.className = "mdz-area-tag";
-    tag.dataset.mdzSheetIndex = String(index);
-    tag.textContent = sheetTagText(state);
-    tag.title = sheetTagTitle(state);
+    const tag = sheetTag(state, index);
     const caption = table.createCaption();
     caption.className = "mdz-area";
     caption.append(tag);

@@ -17,7 +17,7 @@ import { pruneExceptions, sameAnchor, type BlockAnchor, type LocalException } fr
 import { insertLine, isMarkerLine, moveLine, onlyMarkersChanged, removeLine, replaceLine } from "./print/markerEdit";
 import { setGhost, type MarkAction } from "./ui/orientationMarks";
 import type { OrientationTarget } from "./formats/types";
-import { parseRangeText, rangeText, type SheetChoice, type SheetState } from "./formats/sheets";
+import { columnsChoice, parseRangeText, rangeText, type SheetChoice, type SheetState } from "./formats/sheets";
 import { APP_VERSION, RELEASES, releasesSince } from "./releaseNotes";
 import * as plugins from "./plugins/manager";
 import type { PluginManifest } from "./plugins/api";
@@ -715,6 +715,7 @@ export class App {
         orientation: (action) => void this.markAction(tab, action),
         showMarks: () => this.config.orientationMarks !== false,
         sheetMenu: (sheet, x, y) => this.showSheetMenu(tab, sheet, x, y),
+        sheetColumns: (sheet, first, last) => this.setSheetChoice(tab.path, sheet, { ...sheet.choice, area: columnsChoice(sheet, first, last) }),
       });
       tab.frame.append(tab.pages.element);
     }
@@ -1088,6 +1089,7 @@ export class App {
       orientation: (action: MarkAction) => void this.markAction(tab, action),
       orientationMenu: (target: OrientationTarget, x: number, y: number) => this.showPageMenu(tab, target, x, y),
       sheetMenu: (sheet: SheetState, x: number, y: number) => this.showSheetMenu(tab, sheet, x, y),
+      sheetColumns: (sheet: SheetState, first: number, last: number) => this.setSheetChoice(tab.path, sheet, { ...sheet.choice, area: columnsChoice(sheet, first, last) }),
     };
   }
 

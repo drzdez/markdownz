@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { LocalException } from "../print/orientation";
-import { fitsOnePageTall, isSheet, parseRangeText, prepareSheetsForPaper, prepareSheetsForScreen, rangeText } from "./sheets";
+import { columnsChoice, columnsCut, fitsOnePageTall, isSheet, parseRangeText, prepareSheetsForPaper, prepareSheetsForScreen, rangeText } from "./sheets";
 
 /** A sheet as the xlsx plugin writes it: A–D, rows 1–5, "Title" merged over A1:D1. */
 function sheet(attributes: string): HTMLElement {
@@ -78,16 +78,25 @@ describe("Excel sheets on paper", () => {
     const [state] = prepareSheetsForScreen(part, "printArea");
     const table = part.querySelector("table")!;
     expect(state).toMatchObject({ name: "Data", printArea: "B3:C4", whole: "A1:D5", shown: "B3:C4", source: "settings" });
-    expect(table.caption!.textContent).toBe("Print area B3:C4 of A1:D5 ▾");
+    expect(table.caption!.textContent).toBe("Print area B3:C4 of A1:D5▾");
+    expect(state).toMatchObject({ rows: [2, 3], cols: [1, 2] });
+    expect(columnsCut(state)).toBe(true);
+    // The column slider keeps the rows shown.
+    expect(columnsChoice(state, 0, 2)).toBe("A3:C4");
+    expect(columnsChoice(state, 0, 3)).toBe("A3:D4");
     // Row numbers stay on screen: they tell where the part is.
     expect([...table.tBodies[0].rows].map((r) => r.cells[0].textContent)).toEqual(["3", "4"]);
     const whole = sheet(' data-mdz-print-area="2,1,3,2"');
     prepareSheetsForScreen(whole, "all");
-    expect(whole.querySelector("caption")!.textContent).toBe("Whole sheet A1:D5 · print area B3:C4 ▾");
+    expect(whole.querySelector("caption")!.textContent).toBe("Whole sheet A1:D5 · print area B3:C4▾");
     // Without a print area too: a range of your own can still be chosen.
     const plain = sheet("");
-    prepareSheetsForScreen(plain, "printArea");
-    expect(plain.querySelector("caption")!.textContent).toBe("Whole sheet A1:D5 ▾");
+    const [full] = prepareSheetsForScreen(plain, "printArea");
+    expect(plain.querySelector("caption")!.textContent).toBe("Whole sheet A1:D5▾");
+    expect(columnsCut(full)).toBe(false);
+    // All columns of the whole sheet: no choice needed.
+    expect(columnsChoice(full, 0, 3)).toBeUndefined();
+    expect(columnsChoice(full, 1, 3)).toBe("B1:D5");
   });
 
   it("reads and writes ranges of cells", () => {

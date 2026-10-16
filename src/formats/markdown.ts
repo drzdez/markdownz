@@ -8,9 +8,10 @@ import { openDiagram } from "../ui/diagramViewer";
 import { DomFindProvider } from "../ui/domFind";
 import { el } from "../ui/overlay";
 import { Ruler } from "../ui/ruler";
+import { ColumnSlider } from "../ui/columnSlider";
 import type { DocExceptions } from "../print/orientation";
 import { planOrientation, readBlocks } from "./pageOrientation";
-import { prepareSheetsForPaper, prepareSheetsForScreen, type SheetState } from "./sheets";
+import { columnsCut, prepareSheetsForPaper, prepareSheetsForScreen, type SheetState } from "./sheets";
 import { DEFAULT_TEXT_WIDTH, fitObjectsForPaper, fitWideObjects, type Widths } from "./wideObjects";
 import type { DocumentView, FormatPlugin, OutlineItem, PrintPages, ViewContext, ViewHost } from "./types";
 
@@ -76,6 +77,8 @@ class MarkdownView implements DocumentView {
   private ctx: ViewContext | null = null;
   /** Excel sheets of the article and what part of each is shown. */
   private sheets: SheetState[] = [];
+  /** The columns shown of one sheet, under the width ruler (click on the tag of the sheet). */
+  private slider: ColumnSlider;
   private fitFrame = 0;
   private marks: OrientationMarks;
   private stopGhost: () => void;
@@ -109,12 +112,19 @@ class MarkdownView implements DocumentView {
         if (href) host.followLink(href, e.ctrlKey || e.metaKey);
         return;
       }
-      // The tag above an Excel sheet: which part of it is shown.
+      // The tag above an Excel sheet: which part of it is shown; ▾ opens the menu, the tag the column slider.
+      const menu = target.closest<HTMLElement>(".mdz-area-menu");
+      const menuSheet = menu && this.sheets[Number(menu.dataset.mdzSheetIndex)];
+      if (menuSheet && host.sheetMenu) {
+        const box = menu.parentElement!.getBoundingClientRect();
+        host.sheetMenu(menuSheet, box.left, box.bottom + 4);
+        return;
+      }
       const tag = target.closest<HTMLElement>(".mdz-area-tag");
       const sheet = tag && this.sheets[Number(tag.dataset.mdzSheetIndex)];
-      if (sheet && host.sheetMenu) {
-        const box = tag.getBoundingClientRect();
-        host.sheetMenu(sheet, box.left, box.bottom + 4);
+      if (sheet) {
+        if (this.slider.key === sheet.key) this.slider.hide();
+        else this.slider.show(sheet);
         return;
       }
       const figure = target.closest<HTMLElement>("figure.mdz-diagram");
@@ -137,7 +147,11 @@ class MarkdownView implements DocumentView {
       e.preventDefault();
       host.orientationMenu(target, e.clientX, e.clientY);
     });
-    this.element.append(this.ruler.element, this.marks.element);
+    this.slider = new ColumnSlider(
+      (sheet, first, last) => host.sheetColumns?.(sheet, first, last),
+      () => this.slider.hide(),
+    );
+    this.element.append(this.ruler.element, this.slider.element, this.marks.element);
     this.stopGhost = onGhostChange(() => this.marks.layout());
     // The view (window, panes, table of contents) or the article (images loading) changed size.
     this.resizeObserver = new ResizeObserver(() => {
@@ -152,6 +166,7 @@ class MarkdownView implements DocumentView {
   layout(): void {
     this.element.style.setProperty("--text-width", `${layout.widths.text}px`);
     this.ruler.element.hidden = !layout.ruler;
+    this.slider.element.style.top = layout.ruler ? "17px" : "0";
     if (!this.article) return;
     // Code and math too wide follow the print settings: smaller text, then wrapped or cut (scrolled).
     fitWideObjects(this.article, this.element, this.zoom, layout.wideObjects ? layout.widths : null, {
@@ -216,6 +231,10 @@ class MarkdownView implements DocumentView {
     const article = await getRenderer().render(this.source, { docPath: this.path, theme: ctx.theme });
     // Excel sheets show the same part as on paper, with a tag saying so.
     this.sheets = prepareSheetsForScreen(article, marksSettings.print.sheetArea ?? "printArea", exceptions[this.path]?.items ?? []);
+    // The column slider stays while only some columns are shown; all of them hide it.
+    const sliding = this.sheets.find((s) => s.key === this.slider.key);
+    if (sliding && columnsCut(sliding)) this.slider.show(sliding);
+    else this.slider.hide();
     if (this.article) {
       this.resizeObserver.unobserve(this.article);
       this.article.replaceWith(article);

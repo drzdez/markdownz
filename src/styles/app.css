@@ -923,6 +923,83 @@ img.mdz-wide {
   pointer-events: none;
 }
 
+/* Column slider of an Excel sheet, under the width ruler: all columns, the part shown between two stops. */
+.mdz-colslider {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 3px 8px;
+  background: var(--chrome);
+  border-bottom: 1px solid var(--border);
+  font: 12px/1.4 system-ui, sans-serif;
+  color: var(--muted);
+  user-select: none;
+}
+.mdz-colslider[hidden] {
+  display: none;
+}
+.mdz-colslider-name {
+  white-space: nowrap;
+}
+.mdz-colslider-strip {
+  position: relative;
+  flex: 1;
+  height: 18px;
+  min-width: 0;
+}
+.mdz-colslider-cells {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+}
+.mdz-colslider-cells > span {
+  flex: none;
+  overflow: hidden;
+  border-right: 1px solid var(--border);
+  font-size: 10px;
+  line-height: 16px;
+  text-align: center;
+  white-space: nowrap;
+}
+.mdz-colslider-cells > span:last-child {
+  border-right: none;
+}
+.mdz-colslider-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  outline: 1px solid var(--accent);
+  cursor: grab;
+  touch-action: none;
+}
+.mdz-colslider .mdz-ruler-stop {
+  top: -1px;
+  height: 20px;
+}
+.mdz-colslider .mdz-ruler-stop::after {
+  height: 20px;
+}
+.mdz-colslider .mdz-ruler-label {
+  top: 22px;
+}
+.mdz-colslider-close {
+  padding: 0 4px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+.mdz-colslider-close:hover {
+  color: var(--fg);
+}
+
 .mdz-diagram {
   margin: 0 0 16px;
   text-align: center;
@@ -1006,10 +1083,14 @@ img.mdz-wide {
   text-align: left;
   background: var(--bg);
 }
-.mdz-area-tag {
+.mdz-area-group {
+  display: inline-flex;
+}
+.mdz-area-tag,
+.mdz-area-menu {
   padding: 1px 8px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: 10px 0 0 10px;
   background: var(--chrome);
   color: var(--muted);
   font: 12px/1.5 system-ui, sans-serif;
@@ -1021,6 +1102,12 @@ img.mdz-wide {
   gap: 6px;
   margin-bottom: 4px;
 }
+.mdz-area-menu {
+  padding: 1px 6px;
+  border-left: none;
+  border-radius: 0 10px 10px 0;
+}
+.mdz-area-menu:hover,
 .mdz-area-tag:hover {
   color: var(--fg);
   border-color: var(--accent);
