@@ -132,7 +132,7 @@ describe("Excel plugin", () => {
   it("shows the sheet as Excel does", async () => {
     const md = await xlsxToMarkdown(workbook());
     expect(md).toContain("## TCO");
-    expect(md).toContain('<table class="mdz-excel" data-mdz-sheet="TCO" data-mdz-print-area="1,0,2,2" data-mdz-print-titles="0,0" data-mdz-print-orientation="landscape" data-mdz-print-fit="1,0" data-mdz-print-headings ');
+    expect(md).toContain('<table class="mdz-excel" data-mdz-sheet="TCO" data-mdz-key="sheet:TCO" data-mdz-print-area="1,0,2,2" data-mdz-print-titles="0,0" data-mdz-print-orientation="landscape" data-mdz-print-fit="1,0" data-mdz-print-headings ');
     expect(md).not.toContain("Secret");
     // Hidden column B is left out, so the title spans A and C.
     expect(md).toMatch(/<th data-c="0" style="width:140px;min-width:140px">A<\/th><th data-c="2" style="width:64px;min-width:64px">C<\/th><\/tr>/);

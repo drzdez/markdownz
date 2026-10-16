@@ -999,6 +999,26 @@ img.mdz-wide {
 :root .markdown-body table.mdz-excel tbody th {
   min-width: 32px;
 }
+/* The tag above a sheet: which part of it is shown (on screen only; the menu offers the others). */
+:root .markdown-body table.mdz-excel caption.mdz-area {
+  caption-side: top;
+  padding: 0 0 4px;
+  text-align: left;
+  background: var(--bg);
+}
+.mdz-area-tag {
+  padding: 1px 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--chrome);
+  color: var(--muted);
+  font: 12px/1.5 system-ui, sans-serif;
+  cursor: pointer;
+}
+.mdz-area-tag:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
 /* On paper without Excel's "Print headings": the column letters keep the column widths but take no room. */
 :root .markdown-body table.mdz-excel.mdz-print-noheadings thead tr:first-child {
   visibility: collapse;

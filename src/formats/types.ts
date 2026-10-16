@@ -9,6 +9,7 @@ import type { Orientation, PageLayoutOptions } from "../print/imposition";
 import type { BlockAnchor, LocalException, MarkerValue } from "../print/orientation";
 import type { MarkAction } from "../ui/orientationMarks";
 import type { Config } from "../state";
+import type { SheetState } from "./sheets";
 
 export interface ViewContext {
   theme: "light" | "dark";
@@ -25,6 +26,8 @@ export interface ViewHost {
   orientation?(action: MarkAction): void;
   /** Right click on a block: the same orientation menu as on a page of the page view. */
   orientationMenu?(target: OrientationTarget, x: number, y: number): void;
+  /** Click on the tag above an Excel sheet: choose which part of it is shown. */
+  sheetMenu?(sheet: SheetState, x: number, y: number): void;
 }
 
 export interface OutlineItem {
@@ -64,6 +67,8 @@ export interface OrientationTarget {
   local?: Orientation;
   /** A marker in the file for the block, if any. */
   marker?: Orientation;
+  /** The file's own page setup for the block (an Excel sheet set to landscape), if any. */
+  file?: Orientation;
   /** Your page break above the block. */
   localBreak?: boolean;
   /** What the print settings alone give. */
@@ -85,11 +90,13 @@ export interface BlockInfo {
   moved?: { from: number; to: number };
   local?: Orientation;
   marker?: Orientation;
+  /** The file's own page setup (an Excel sheet set to landscape). */
+  file?: Orientation;
   /** Your page break above the block. */
   localBreak?: boolean;
-  /** Orientation forced by an exception or marker, undefined when the settings decide. */
+  /** Orientation forced by an exception, marker or page setup, undefined when the settings decide. */
   decided?: Orientation;
-  source: "yours" | "marker" | "settings";
+  source: "yours" | "marker" | "file" | "settings";
 }
 
 /** Where a page starts: in block `block`, at `fraction` of its height (0 = right above it). */

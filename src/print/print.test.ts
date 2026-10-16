@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { dominantOrientation, flipEdge, impose, orientSides, parseRange, passes, placePage, preferredOrientation, sheetCount, sheetGeometry, slotSize, type Side } from "./imposition";
 import { dropBlankPages, groupColumns, paginate, paginateMixed } from "./paginate";
-import { decide, makeAnchor, markerComment, markersToAnchors, parseMarker, parseMarkerText, pruneExceptions, resolveMarkers, type MarkerValue } from "./orientation";
+import { decide, makeAnchor, markerComment, markersToAnchors, parseMarker, parseMarkerText, pruneExceptions, resolveMarkers, sameAnchor, type MarkerValue } from "./orientation";
 import { insertLine, isMarkerLine, moveLine, onlyMarkersChanged, removeLine, replaceLine } from "./markerEdit";
 
 describe("page ranges", () => {
@@ -287,6 +287,21 @@ describe("orientation exceptions", () => {
     expect(decide("portrait", "landscape")).toEqual({ orientation: "portrait", source: "yours", overrules: { source: "marker", orientation: "landscape" } });
     expect(decide(undefined, "landscape")).toEqual({ orientation: "landscape", source: "marker" });
     expect(decide(undefined, undefined)).toEqual({ orientation: undefined, source: "settings" });
+  });
+
+  it("follows the file's page setup (Excel) like a marker, below your exception", () => {
+    expect(decide(undefined, undefined, "landscape")).toEqual({ orientation: "landscape", source: "file" });
+    expect(decide("portrait", undefined, "landscape")).toEqual({ orientation: "portrait", source: "yours", overrules: { source: "file", orientation: "landscape" } });
+    expect(decide(undefined, "portrait", "landscape")).toEqual({ orientation: "portrait", source: "marker" });
+  });
+
+  it("matches blocks with a key by the key alone, whatever their content", () => {
+    const before = makeAnchor("table", "costs", "A B C 1 Total 1200", "sheet:Costs");
+    const after = makeAnchor("table", "costs", "A B C 1 Total 1350 changed", "sheet:Costs");
+    expect(sameAnchor(before, after)).toBe(true);
+    expect(sameAnchor(before, makeAnchor("table", "costs", "A B C 1 Total 1200", "sheet:Other"))).toBe(false);
+    // A keyed block never matches one without a key (e.g. an exception stored before keys existed).
+    expect(sameAnchor(before, makeAnchor("table", "costs", "A B C 1 Total 1200"))).toBe(false);
   });
 
   it("anchors blocks by heading and text, not by position", () => {

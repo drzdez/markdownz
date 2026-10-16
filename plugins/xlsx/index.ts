@@ -130,7 +130,8 @@ function cellBorders(sheet: Sheet, book: Workbook, anchorOf: (r: number, c: numb
 /** How Excel prints the sheet, for the app's page layout (see formats/sheets.ts there). */
 function printAttributes(sheet: Sheet): string {
   const p = sheet.print;
-  const attrs = [` data-mdz-sheet="${escape(sheet.name)}"`];
+  // The key names the sheet for your choices and exceptions, which then survive changes of its content.
+  const attrs = [` data-mdz-sheet="${escape(sheet.name)}" data-mdz-key="sheet:${escape(sheet.name)}"`];
   if (p.area) attrs.push(` data-mdz-print-area="${p.area.row},${p.area.col},${p.area.lastRow},${p.area.lastCol}"`);
   if (p.titleRows) attrs.push(` data-mdz-print-titles="${p.titleRows[0]},${p.titleRows[1]}"`);
   if (p.orientation) attrs.push(` data-mdz-print-orientation="${p.orientation}"`);

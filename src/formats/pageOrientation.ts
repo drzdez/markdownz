@@ -32,6 +32,8 @@ interface Block {
   local?: Orientation;
   localBreak: boolean;
   marker?: Orientation;
+  /** The file's own page setup (an Excel sheet set to landscape). */
+  file?: Orientation;
   decision: Decision;
 }
 
@@ -70,7 +72,8 @@ export function readBlocks(article: HTMLElement) {
       continue;
     }
     child.dataset.mdzBlock = String(elements.length);
-    elements.push({ element: child, anchor: makeAnchor(child.tagName, heading, child.textContent ?? ""), line: source?.line ?? -1, end: source?.end ?? -1 });
+    // Formats name some blocks (an Excel sheet by its name), so your exceptions stay when the content changes.
+    elements.push({ element: child, anchor: makeAnchor(child.tagName, heading, child.textContent ?? "", child.dataset.mdzKey), line: source?.line ?? -1, end: source?.end ?? -1 });
     if (/^H[1-6]$/.test(child.tagName)) heading = child.textContent ?? "";
     source = null;
     items.push({ block: true });
@@ -95,9 +98,12 @@ export function planOrientation(article: HTMLElement, locals: LocalException[], 
     const localBreak = locals.find((l) => l.pageBreak && !matched.has(l) && sameAnchor(l.anchor, anchor));
     if (localBreak) matched.add(localBreak);
     const marker = markers.orientation[i];
-    return { element, anchor, label: describe(element), line, end, local: local?.orientation, localBreak: !!localBreak, marker, decision: decide(local?.orientation, marker) };
+    // Excel stores portrait whether or not anybody chose it, so only landscape counts as a choice.
+    const file = element.dataset.mdzPrintOrientation === "landscape" ? ("landscape" as const) : undefined;
+    return { element, anchor, label: describe(element), line, end, local: local?.orientation, localBreak: !!localBreak, marker, file, decision: decide(local?.orientation, marker, file) };
   });
-  const orphans = locals.filter((l) => !matched.has(l));
+  // Sheet views (print area, fit) are applied by formats/sheets.ts, not here.
+  const orphans = locals.filter((l) => !matched.has(l) && (l.orientation || l.pageBreak));
   const blockOf = (element: Element): Block | undefined => blocks[Number(element.closest<HTMLElement>("[data-mdz-block]")?.dataset.mdzBlock)];
   const ruleBlock = (ref: RuleRef) => blocks.findIndex((b) => b.anchor.tag === ref.tag && b.anchor.hash === ref.hash);
 
@@ -189,6 +195,8 @@ export function planOrientation(article: HTMLElement, locals: LocalException[], 
       ].filter(Boolean);
       summary.push(`Markers in the file: ${parts.join(", ")}.`);
     }
+    const setUp = blocks.filter((b) => b.file && !b.marker);
+    if (setUp.length) summary.push(`Page setup in the file: landscape ×${setUp.length}.`);
     const yours = blocks.filter((b) => b.local);
     if (yours.length) summary.push(`Your exceptions on this computer: ${yours.length} (they win over markers and settings).`);
     const yourBreakCount = blocks.filter((b) => b.localBreak).length;
@@ -214,6 +222,7 @@ export function planOrientation(article: HTMLElement, locals: LocalException[], 
       local: b.local,
       localBreak: b.localBreak,
       marker: b.marker,
+      file: b.file,
       decided: b.decision.orientation,
       source: b.decision.source,
     }));
@@ -268,6 +277,7 @@ export function planOrientation(article: HTMLElement, locals: LocalException[], 
               reason: page(pageIndex) || "portrait · print settings",
               local: block.local,
               marker: block.marker,
+              file: block.file,
               localBreak: block.localBreak,
               automatic: automatic(block),
               turnable: portrait,
@@ -294,6 +304,7 @@ export function planOrientation(article: HTMLElement, locals: LocalException[], 
               reason: page(index) || "portrait · print settings",
               local: block.local,
               marker: block.marker,
+              file: block.file,
               localBreak: block.localBreak,
               automatic: automatic(block),
               turnable: portrait,

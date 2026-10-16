@@ -135,6 +135,11 @@ export interface BlockAnchor {
   heading: string;
   /** Hash of the start of the block's normalized text. */
   hash: string;
+  /**
+   * A name the format gives the block that stays when its content changes,
+   * e.g. "sheet:Costs" for an Excel sheet; blocks with keys match by key alone.
+   */
+  key?: string;
 }
 
 export function normalizeText(text: string): string {
@@ -151,11 +156,14 @@ export function hashText(text: string): string {
   return (h >>> 0).toString(16).padStart(8, "0");
 }
 
-export function makeAnchor(tag: string, heading: string, text: string): BlockAnchor {
-  return { tag: tag.toLowerCase(), heading: normalizeText(heading).slice(0, 80), hash: hashText(normalizeText(text).slice(0, 300)) };
+export function makeAnchor(tag: string, heading: string, text: string, key?: string): BlockAnchor {
+  const anchor: BlockAnchor = { tag: tag.toLowerCase(), heading: normalizeText(heading).slice(0, 80), hash: hashText(normalizeText(text).slice(0, 300)) };
+  if (key) anchor.key = key;
+  return anchor;
 }
 
 export function sameAnchor(a: BlockAnchor, b: BlockAnchor): boolean {
+  if (a.key || b.key) return a.key === b.key;
   return a.tag === b.tag && a.heading === b.heading && a.hash === b.hash;
 }
 
@@ -166,6 +174,10 @@ export interface LocalException {
   orientation?: Orientation;
   /** Instead of an orientation: a new page starts right above the block. */
   pageBreak?: boolean;
+  /** Excel sheets: what of the sheet is shown, "printArea", "all" or a range like "B3:K40". */
+  area?: string;
+  /** Excel sheets on paper: to the page width, or onto one page. */
+  fit?: "width" | "page";
   /** Short description for menus, e.g. "table “Product | PG in master …”". */
   label: string;
 }
@@ -190,7 +202,8 @@ export function pruneExceptions(all: Record<string, DocExceptions>, now: number)
   return Object.fromEntries(kept);
 }
 
-export type Source = "yours" | "marker" | "settings";
+/** Who decides: your exception, a marker in the file, the file's own page setup (Excel), or the print settings. */
+export type Source = "yours" | "marker" | "file" | "settings";
 
 export interface Decision {
   /** Forced orientation, or undefined to follow the print settings. */
@@ -200,15 +213,17 @@ export interface Decision {
   overrules?: { source: Source; orientation: Orientation };
 }
 
-/** Your exception wins over a marker in the file, which wins over the print settings. */
-export function decide(local: Orientation | undefined, marker: Orientation | undefined): Decision {
-  if (local) return { orientation: local, source: "yours", ...(marker && marker !== local ? { overrules: { source: "marker", orientation: marker } } : {}) };
-  if (marker) return { orientation: marker, source: "marker" };
+/** Your exception wins over a marker in the file or the file's page setup, which win over the print settings. */
+export function decide(local: Orientation | undefined, marker: Orientation | undefined, file?: Orientation): Decision {
+  const fromFile: { source: Source; orientation: Orientation } | undefined = marker ? { source: "marker", orientation: marker } : file ? { source: "file", orientation: file } : undefined;
+  if (local) return { orientation: local, source: "yours", ...(fromFile && fromFile.orientation !== local ? { overrules: fromFile } : {}) };
+  if (fromFile) return { orientation: fromFile.orientation, source: fromFile.source };
   return { orientation: undefined, source: "settings" };
 }
 
 export const SOURCE_TEXT: Record<Source, string> = {
   yours: "your exception",
   marker: "marker in the file",
+  file: "page setup in the file",
   settings: "print settings",
 };

@@ -10,7 +10,7 @@ import { el } from "../ui/overlay";
 import { Ruler } from "../ui/ruler";
 import type { DocExceptions } from "../print/orientation";
 import { planOrientation, readBlocks } from "./pageOrientation";
-import { prepareSheetsForPaper } from "./sheets";
+import { prepareSheetsForPaper, prepareSheetsForScreen, type SheetState } from "./sheets";
 import { DEFAULT_TEXT_WIDTH, fitObjectsForPaper, fitWideObjects, type Widths } from "./wideObjects";
 import type { DocumentView, FormatPlugin, OutlineItem, PrintPages, ViewContext, ViewHost } from "./types";
 
@@ -28,6 +28,8 @@ const views = new Set<MarkdownView>();
 let exceptions: Record<string, DocExceptions> = {};
 /** Show orientation marks in the continuous view, and the print settings they are computed for. */
 const marksSettings = { show: true, print: DEFAULT_PRINT_OPTIONS as PrintOptions, key: "" };
+/** What decides the part of Excel sheets shown on screen: the print settings and your choices. */
+let sheetsKey = "";
 
 /** Diagrams, pictures and display math of a laid-out article: they cannot be split between pages. */
 function wholeBlocks(article: HTMLElement): { top: number; bottom: number }[] {
@@ -71,6 +73,9 @@ class MarkdownView implements DocumentView {
   private path = "";
   private source = "";
   private zoom = 1;
+  private ctx: ViewContext | null = null;
+  /** Excel sheets of the article and what part of each is shown. */
+  private sheets: SheetState[] = [];
   private fitFrame = 0;
   private marks: OrientationMarks;
   private stopGhost: () => void;
@@ -102,6 +107,14 @@ class MarkdownView implements DocumentView {
         e.preventDefault();
         const href = link.getAttribute("href") ?? link.getAttribute("xlink:href");
         if (href) host.followLink(href, e.ctrlKey || e.metaKey);
+        return;
+      }
+      // The tag above an Excel sheet: which part of it is shown.
+      const tag = target.closest<HTMLElement>(".mdz-area-tag");
+      const sheet = tag && this.sheets[Number(tag.dataset.mdzSheetIndex)];
+      if (sheet && host.sheetMenu) {
+        const box = tag.getBoundingClientRect();
+        host.sheetMenu(sheet, box.left, box.bottom + 4);
         return;
       }
       const figure = target.closest<HTMLElement>("figure.mdz-diagram");
@@ -151,6 +164,11 @@ class MarkdownView implements DocumentView {
     else this.marks.layout();
   }
 
+  /** Renders again when the article has Excel sheets, whose shown part changed. */
+  showSheetsAgain(): void {
+    if (this.sheets.length && this.ctx) void this.refresh(this.ctx);
+  }
+
   /** The marks must be computed again, now or when the view is shown. */
   staleMarks(): void {
     this.marksStale = true;
@@ -194,7 +212,10 @@ class MarkdownView implements DocumentView {
   }
 
   async refresh(ctx: ViewContext): Promise<void> {
+    this.ctx = ctx;
     const article = await getRenderer().render(this.source, { docPath: this.path, theme: ctx.theme });
+    // Excel sheets show the same part as on paper, with a tag saying so.
+    this.sheets = prepareSheetsForScreen(article, marksSettings.print.sheetArea ?? "printArea", exceptions[this.path]?.items ?? []);
     if (this.article) {
       this.resizeObserver.unobserve(this.article);
       this.article.replaceWith(article);
@@ -257,7 +278,7 @@ class MarkdownView implements DocumentView {
     ensurePaperStyle();
     const article = await getRenderer().render(this.source, { docPath: this.path, theme: "light" });
     article.style.fontSize = `${layout.fontPt}pt`;
-    const sheets = prepareSheetsForPaper(article, layout.sheetArea);
+    const sheets = prepareSheetsForPaper(article, layout.sheetArea, exceptions[this.path]?.items ?? []);
     const measure = el("div", { className: "mdz-paper mdz-measure" }, article);
     measure.style.width = `${contentWidth}mm`;
     document.body.append(measure);
@@ -287,10 +308,13 @@ class MarkdownView implements DocumentView {
       .map((r) => ({ top: r.top - articleTop, bottom: r.bottom - articleTop }));
     const ranges = dropBlankPages(laidOut, content);
     measure.remove();
+    const pageNotes = notes(ranges);
+    // Parts of Excel sheets: said above the pages and in the print dialog.
+    pageNotes.summary.push(...sheets.notes);
 
     return {
-      notes: notes(ranges),
-      sheets,
+      notes: pageNotes,
+      sheets: sheets.count,
       count: ranges.length,
       size: (index) => (ranges[index].landscape ? turned : paper),
       render: (index) => {
@@ -341,6 +365,13 @@ export const markdownFormat: FormatPlugin = {
     if (key !== marksSettings.key) {
       marksSettings.key = key;
       for (const view of views) view.staleMarks();
+    }
+    // Shown parts of Excel sheets follow the print settings and your choices: show them again.
+    const sheets = JSON.stringify([marksSettings.print.sheetArea, Object.entries(exceptions).map(([path, doc]) => [path, doc.items.filter((i) => i.area || i.fit)])]);
+    if (sheets !== sheetsKey) {
+      const first = !sheetsKey;
+      sheetsKey = sheets;
+      if (!first) for (const view of views) view.showSheetsAgain();
     }
     layout.wideObjects = config.wideObjects !== false;
     layout.ruler = config.ruler !== false;

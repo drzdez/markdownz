@@ -81,7 +81,7 @@ export function blockTarget(data: MarksData, index: number): OrientationTarget |
   const b = data.blocks[index];
   if (!b) return null;
   const automatic: Orientation = b.rule ? "landscape" : "portrait";
-  const how = b.decided ? (b.source === "yours" ? "your exception" : "marker in the file") : b.rule ? "wide content, print settings" : "print settings";
+  const how = b.decided ? { yours: "your exception", marker: "marker in the file", file: "page setup in the file", settings: "print settings" }[b.source] : b.rule ? "wide content, print settings" : "print settings";
   return {
     anchor: b.anchor,
     line: b.line,
@@ -90,6 +90,7 @@ export function blockTarget(data: MarksData, index: number): OrientationTarget |
     reason: `${b.decided ?? automatic} · ${how}`,
     local: b.local,
     marker: b.marker,
+    file: b.file,
     localBreak: b.localBreak,
     automatic,
     turnable: data.turnable,
@@ -196,6 +197,7 @@ export function markSpecs(data: MarksData): { brackets: BracketSpec[]; labels: L
   data.blocks.forEach((b, i) => {
     if (b.local) brackets.push({ from: i, to: i, kind: `yours ${b.local}`, lane: 0, title: `${b.local}: your exception` });
     else if (b.marker) brackets.push({ from: i, to: i, kind: `marker ${b.marker}`, lane: 0, title: `${b.marker}: marker in the file` });
+    else if (b.file) brackets.push({ from: i, to: i, kind: `marker ${b.file}`, lane: 0, title: `${b.file}: page setup in the file` });
     if (b.rule && !b.decided && !b.moved) brackets.push({ from: i, to: i, kind: "rule", lane: 1, title: "landscape: wide content, print settings" });
     if (b.moved) brackets.push({ from: b.moved.from, to: b.moved.to, kind: "moved", lane: 1, title: `landscape: moved turn of ${b.label}` });
   });

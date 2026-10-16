@@ -17,6 +17,7 @@ import { pruneExceptions, sameAnchor, type BlockAnchor, type LocalException } fr
 import { insertLine, isMarkerLine, moveLine, onlyMarkersChanged, removeLine, replaceLine } from "./print/markerEdit";
 import { setGhost, type MarkAction } from "./ui/orientationMarks";
 import type { OrientationTarget } from "./formats/types";
+import { parseRangeText, rangeText, type SheetChoice, type SheetState } from "./formats/sheets";
 import { APP_VERSION, RELEASES, releasesSince } from "./releaseNotes";
 import * as plugins from "./plugins/manager";
 import type { PluginManifest } from "./plugins/api";
@@ -24,7 +25,7 @@ import { pickForward, showHelp, showHistoryTree, showSettings, showWhatsNew, typ
 import { PageView, pageViewKey, type PageColumns } from "./ui/pageView";
 import { openPrintDialog } from "./ui/printDialog";
 import { Finder } from "./ui/find";
-import { el, topLayer } from "./ui/overlay";
+import { el, openModal, topLayer } from "./ui/overlay";
 import { effectiveTheme, initTheme, setTheme } from "./ui/theme";
 import { Toc } from "./ui/toc";
 
@@ -768,9 +769,15 @@ export class App {
   private showPageMenu(tab: Tab, target: OrientationTarget, x: number, y: number): void {
     const check = (on: boolean) => (on ? "checked" : "unchecked");
     const set = (orientation: Orientation | null) => () => this.setException(tab.path, target, orientation);
+    // What decides without your exception: a marker in the file, the file's page setup (Excel), or the print settings.
+    const fromFile = target.marker
+      ? { orientation: target.marker, text: "marker in the file" }
+      : target.file
+        ? { orientation: target.file, text: "page setup in the file" }
+        : undefined;
     const yours = (o: Orientation) =>
-      target.marker && target.marker !== o ? `Your exception, overrides the ${target.marker} marker in the file` : "Your exception, saved on this computer";
-    const automatic = target.marker ?? target.automatic;
+      fromFile && fromFile.orientation !== o ? `Your exception, overrides the ${fromFile.orientation} ${fromFile.text}` : "Your exception, saved on this computer";
+    const automatic = fromFile?.orientation ?? target.automatic;
     // Markers are written only into Markdown files; other formats shown as Markdown keep your exceptions.
     const inFile = !!tab.format?.markersInFile;
     const copy = (o: Orientation) => () => {
@@ -789,7 +796,7 @@ export class App {
         { label: "Portrait page", detail: `${yours("portrait")}; wide content is shrunk`, className: check(target.local === "portrait"), action: set("portrait") },
         {
           label: `Automatic (${automatic})`,
-          detail: target.marker ? `Follows the ${target.marker} marker in the file` : "Follows the print settings",
+          detail: fromFile ? `Follows the ${fromFile.orientation} ${fromFile.text}` : "Follows the print settings",
           className: check(!target.local),
           action: set(null),
         },
@@ -831,10 +838,100 @@ export class App {
     toast(on ? `Page break above ${label} (your exception on this computer).` : `Your page break above ${label} removed.`);
   }
 
-  /** Stores (or removes, with null) your orientation exception for a block of a document. */
-  private setException(path: string, target: Pick<OrientationTarget, "anchor" | "label" | "marker">, orientation: Orientation | null): void {
+  /**
+   * The tag above an Excel sheet: which part of it is shown, on screen and on
+   * paper alike, and how it fits the paper. Your choice is kept on this computer
+   * for the sheet (by its name) and wins over the print settings.
+   */
+  private showSheetMenu(tab: Tab, sheet: SheetState, x: number, y: number): void {
+    const check = (on: boolean) => (on ? "checked" : "unchecked");
+    const set = (choice: SheetChoice) => () => this.setSheetChoice(tab.path, sheet, { ...sheet.choice, ...choice });
+    const custom = sheet.choice.area && sheet.choice.area !== "printArea" && sheet.choice.area !== "all" ? sheet.choice.area : undefined;
+    const settingsText = sheet.settings === "printArea" ? "Print area (when set)" : "Whole sheet";
+    const automatic = sheet.settings === "printArea" && sheet.printArea ? `print area ${sheet.printArea}` : `whole sheet ${sheet.whole}`;
+    // Without your choice: "fit to 1 page" of the file's page setup, or the page width.
+    const fileFit = sheet.fileFit;
+    showContextMenu(x, y, [
+      { label: `Sheet “${sheet.name}”`, detail: `Now: ${sheet.crop ? sheet.shown : `whole sheet ${sheet.whole}`}${sheet.source === "yours" ? " (your choice)" : " (print settings)"}`, disabled: true, action: () => {} },
+      null,
+      {
+        label: sheet.printArea ? `Print area ${sheet.printArea}` : "Print area",
+        detail: sheet.printArea ? "Set in Excel; your choice for this sheet" : "The sheet has no print area set in Excel",
+        disabled: !sheet.printArea,
+        className: check(sheet.choice.area === "printArea"),
+        action: set({ area: "printArea" }),
+      },
+      { label: `Whole sheet ${sheet.whole}`, detail: "Your choice for this sheet", className: check(sheet.choice.area === "all"), action: set({ area: "all" }) },
+      { label: custom ? `Range ${custom}…` : "Range…", detail: "Your own part of the sheet, e.g. B3:K40", className: check(!!custom), action: () => this.askSheetRange(tab, sheet) },
+      { label: `Automatic (${automatic})`, detail: `Follows the print settings: Excel sheets: ${settingsText}`, className: check(!sheet.choice.area), action: set({ area: undefined }) },
+      null,
+      { label: "Paper: page width", detail: "Scaled to the width of the page, continues on further pages", className: check(sheet.choice.fit === "width"), action: set({ fit: "width" }) },
+      { label: "Paper: one page", detail: "Scaled onto a single page", className: check(sheet.choice.fit === "page"), action: set({ fit: "page" }) },
+      {
+        label: `Paper: automatic (${fileFit ? "one page" : "page width"})`,
+        detail: fileFit ? "Follows the page setup in the file (fit to 1 page)" : "Scaled to the page width",
+        className: check(!sheet.choice.fit),
+        action: set({ fit: undefined }),
+      },
+    ]);
+  }
+
+  /** Asks for a range of the sheet to show (like B3:K40). */
+  private askSheetRange(tab: Tab, sheet: SheetState): void {
+    const input = el("input", { type: "text", value: sheet.choice.area && sheet.choice.area.includes(":") ? sheet.choice.area : sheet.shown, spellcheck: false });
+    const error = el("p", { className: "mdz-hint" });
+    const ok = el("button", { className: "primary", textContent: "Show" });
+    const cancel = el("button", { textContent: "Cancel" });
+    const layer = openModal(
+      `Part of sheet “${sheet.name}”`,
+      el(
+        "div",
+        {},
+        el("p", { textContent: `Cells to show and print, e.g. B3:K40. The sheet has ${sheet.whole}${sheet.printArea ? `, its print area is ${sheet.printArea}` : ""}.` }),
+        input,
+        error,
+        el("div", { className: "mdz-print-buttons" }, el("span", { className: "spacer" }), cancel, ok),
+      ),
+    );
+    const apply = () => {
+      const range = parseRangeText(input.value);
+      if (!range) {
+        error.textContent = "Not a range of cells; write it like B3:K40.";
+        return;
+      }
+      layer.close();
+      this.setSheetChoice(tab.path, sheet, { ...sheet.choice, area: rangeText(range) });
+    };
+    ok.addEventListener("click", apply);
+    cancel.addEventListener("click", () => layer.close());
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") apply();
+    });
+    input.focus();
+    input.select();
+  }
+
+  /** Stores your choice for an Excel sheet (or removes it when empty). */
+  private setSheetChoice(path: string, sheet: SheetState, choice: SheetChoice): void {
+    const anchor: BlockAnchor = { tag: "table", heading: "", hash: "", key: sheet.key };
     const all = { ...this.config.pageExceptions };
-    const items = (all[path]?.items ?? []).filter((e) => e.pageBreak || !sameAnchor(e.anchor, target.anchor));
+    const items = (all[path]?.items ?? []).filter((e) => !((e.area || e.fit) && sameAnchor(e.anchor, anchor)));
+    const kept: SheetChoice = {};
+    if (choice.area) kept.area = choice.area;
+    if (choice.fit) kept.fit = choice.fit;
+    if (kept.area || kept.fit) items.push({ anchor, ...kept, label: `sheet “${sheet.name}”` });
+    if (items.length) all[path] = { used: Date.now(), items };
+    else delete all[path];
+    void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(path));
+    const area = !kept.area ? "automatic" : kept.area === "printArea" ? "print area" : kept.area === "all" ? "whole sheet" : kept.area;
+    toast(`Sheet “${sheet.name}”: ${area}${kept.fit ? `, ${kept.fit === "page" ? "one page" : "page width"} on paper` : ""} (your choice on this computer).`);
+  }
+
+  /** Stores (or removes, with null) your orientation exception for a block of a document. */
+  private setException(path: string, target: Pick<OrientationTarget, "anchor" | "label" | "marker" | "file">, orientation: Orientation | null): void {
+    const all = { ...this.config.pageExceptions };
+    // Page breaks and sheet views of the block stay.
+    const items = (all[path]?.items ?? []).filter((e) => !e.orientation || !sameAnchor(e.anchor, target.anchor));
     if (orientation) items.push({ anchor: target.anchor, orientation, label: target.label });
     if (items.length) all[path] = { used: Date.now(), items };
     else delete all[path];
@@ -843,7 +940,7 @@ export class App {
     toast(
       orientation
         ? `${target.label}: ${orientation} page (your exception on this computer).`
-        : `${target.label}: automatic again (${target.marker ? "marker in the file" : "print settings"}).`,
+        : `${target.label}: automatic again (${target.marker ? "marker in the file" : target.file ? "page setup in the file" : "print settings"}).`,
     );
   }
 
@@ -989,6 +1086,7 @@ export class App {
       },
       orientation: (action: MarkAction) => void this.markAction(tab, action),
       orientationMenu: (target: OrientationTarget, x: number, y: number) => this.showPageMenu(tab, target, x, y),
+      sheetMenu: (sheet: SheetState, x: number, y: number) => this.showSheetMenu(tab, sheet, x, y),
     };
   }
 
@@ -1025,7 +1123,7 @@ export class App {
     }
     if (action.type === "reanchor") {
       const all = { ...this.config.pageExceptions };
-      const items = (all[tab.path]?.items ?? []).filter((e) => e.pageBreak || (!sameAnchor(e.anchor, action.from) && !sameAnchor(e.anchor, action.to)));
+      const items = (all[tab.path]?.items ?? []).filter((e) => !e.orientation || (!sameAnchor(e.anchor, action.from) && !sameAnchor(e.anchor, action.to)));
       items.push({ anchor: action.to, orientation: action.orientation, label: action.label });
       all[tab.path] = { used: Date.now(), items };
       void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(tab.path));
