@@ -166,20 +166,18 @@ export function prepareSheetsForScreen(article: HTMLElement, mode: SheetArea, lo
   return [...article.querySelectorAll<HTMLTableElement>("table.mdz-excel")].map((table, index) => {
     const state = sheetState(table, mode, locals);
     if (state.crop) crop(table, state.crop, titleRows(table));
-    // A tag only where there is a choice: a print area in the file, or a choice of yours.
-    if (state.printArea || state.source === "yours" || state.fitSource === "yours") {
-      const tag = document.createElement("button");
-      tag.type = "button";
-      tag.className = "mdz-area-tag";
-      tag.dataset.mdzSheetIndex = String(index);
-      tag.textContent = state.crop
-        ? `${state.choice.area && state.choice.area !== "printArea" ? "Range" : "Print area"} ${state.shown} of ${state.whole} ▾`
-        : `Whole sheet ${state.whole}${state.printArea ? ` · print area ${state.printArea}` : ""} ▾`;
-      tag.title = `${state.crop ? "Only a part of the sheet is shown, as it is printed." : "All of the sheet is shown."} On paper: ${state.fit === "page" ? "on one page" : "fitted to the page width"}. Click to choose.`;
-      const caption = table.createCaption();
-      caption.className = "mdz-area";
-      caption.append(tag);
-    }
+    // A tag above every sheet: what part is shown, and the menu to choose another.
+    const tag = document.createElement("button");
+    tag.type = "button";
+    tag.className = "mdz-area-tag";
+    tag.dataset.mdzSheetIndex = String(index);
+    tag.textContent = state.crop
+      ? `${state.choice.area && state.choice.area !== "printArea" ? "Range" : "Print area"} ${state.shown} of ${state.whole} ▾`
+      : `Whole sheet ${state.whole}${state.printArea ? ` · print area ${state.printArea}` : ""} ▾`;
+    tag.title = `${state.crop ? "Only a part of the sheet is shown, as it is printed." : "All of the sheet is shown."} On paper: ${state.fit === "page" ? "on one page" : "fitted to the page width"}. Click to choose.`;
+    const caption = table.createCaption();
+    caption.className = "mdz-area";
+    caption.append(tag);
     return state;
   });
 }

@@ -84,10 +84,10 @@ describe("Excel sheets on paper", () => {
     const whole = sheet(' data-mdz-print-area="2,1,3,2"');
     prepareSheetsForScreen(whole, "all");
     expect(whole.querySelector("caption")!.textContent).toBe("Whole sheet A1:D5 · print area B3:C4 ▾");
-    // Nothing to choose: no tag.
+    // Without a print area too: a range of your own can still be chosen.
     const plain = sheet("");
     prepareSheetsForScreen(plain, "printArea");
-    expect(plain.querySelector("caption")).toBeNull();
+    expect(plain.querySelector("caption")!.textContent).toBe("Whole sheet A1:D5 ▾");
   });
 
   it("reads and writes ranges of cells", () => {
