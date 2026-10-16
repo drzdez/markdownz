@@ -81,6 +81,11 @@
   </keywords>
 
   <releases>
+    <release version="0.4.10" date="2026-10-16">
+      <description>
+        <p>Excel sheets print their print area, or the whole sheet scaled to the page width, with title rows on every page and headings and gridlines only when Excel prints them; the screen shows the same part, with a tag above the sheet to choose print area, whole sheet or a range of your own. Sheets set to landscape in Excel get landscape pages, and long text in a sheet is no longer cut off.</p>
+      </description>
+    </release>
     <release version="0.4.9" date="2026-10-15">
       <description>
         <p>The Excel plugin shows sheets as Excel does: fonts, colours, borders, number formats such as currencies, percentages and dates, merged cells and column widths. The Open with menu shows the real names of applications and leaves out uninstalled ones.</p>
