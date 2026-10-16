@@ -128,6 +128,18 @@ function sheetNote(s: SheetState): string {
   return parts.length ? `Excel sheet “${s.name}”: ${parts.join(", ")}.` : "";
 }
 
+/** The text of the tag of a sheet: what part is shown. */
+export function sheetTagText(s: SheetState): string {
+  return s.crop
+    ? `${s.choice.area && s.choice.area !== "printArea" ? "Range" : "Print area"} ${s.shown} of ${s.whole} ▾`
+    : `Whole sheet ${s.whole}${s.printArea ? ` · print area ${s.printArea}` : ""} ▾`;
+}
+
+/** The tooltip of the tag of a sheet. */
+export function sheetTagTitle(s: SheetState): string {
+  return `${s.crop ? "Only a part of the sheet is shown, as it is printed." : "All of the sheet is shown."} On paper: ${s.fit === "page" ? "on one page" : "fitted to the page width"}. Click to choose.`;
+}
+
 /** Keeps the title rows of a sheet, which repeat at the top of its pages. */
 function titleRows(table: HTMLTableElement): (row: number) => boolean {
   const titles = table.dataset.mdzPrintTitles ? numbers(table.dataset.mdzPrintTitles) : null;
@@ -135,11 +147,13 @@ function titleRows(table: HTMLTableElement): (row: number) => boolean {
 }
 
 /** Prepares the sheets of a laid-out article for paper: how many there are, and notes about the parts shown. */
-export function prepareSheetsForPaper(article: HTMLElement, mode: SheetArea, locals: LocalException[] = []): { count: number; notes: string[] } {
+export function prepareSheetsForPaper(article: HTMLElement, mode: SheetArea, locals: LocalException[] = []): { count: number; notes: string[]; states: SheetState[] } {
   const tables = [...article.querySelectorAll<HTMLTableElement>("table.mdz-excel")];
   const notes: string[] = [];
+  const states: SheetState[] = [];
   for (const table of tables) {
     const state = sheetState(table, mode, locals);
+    states.push(state);
     const isTitle = titleRows(table);
     if (state.crop) crop(table, state.crop, isTitle);
     table.dataset.mdzPrintFit = state.fit === "page" ? "1,1" : "1,0";
@@ -154,7 +168,7 @@ export function prepareSheetsForPaper(article: HTMLElement, mode: SheetArea, loc
     const note = sheetNote(state);
     if (note) notes.push(note);
   }
-  return { count: tables.length, notes };
+  return { count: tables.length, notes, states };
 }
 
 /**
@@ -171,10 +185,8 @@ export function prepareSheetsForScreen(article: HTMLElement, mode: SheetArea, lo
     tag.type = "button";
     tag.className = "mdz-area-tag";
     tag.dataset.mdzSheetIndex = String(index);
-    tag.textContent = state.crop
-      ? `${state.choice.area && state.choice.area !== "printArea" ? "Range" : "Print area"} ${state.shown} of ${state.whole} ▾`
-      : `Whole sheet ${state.whole}${state.printArea ? ` · print area ${state.printArea}` : ""} ▾`;
-    tag.title = `${state.crop ? "Only a part of the sheet is shown, as it is printed." : "All of the sheet is shown."} On paper: ${state.fit === "page" ? "on one page" : "fitted to the page width"}. Click to choose.`;
+    tag.textContent = sheetTagText(state);
+    tag.title = sheetTagTitle(state);
     const caption = table.createCaption();
     caption.className = "mdz-area";
     caption.append(tag);

@@ -714,6 +714,7 @@ export class App {
         removeOrphans: (orphans) => this.removeExceptions(tab.path, orphans),
         orientation: (action) => void this.markAction(tab, action),
         showMarks: () => this.config.orientationMarks !== false,
+        sheetMenu: (sheet, x, y) => this.showSheetMenu(tab, sheet, x, y),
       });
       tab.frame.append(tab.pages.element);
     }

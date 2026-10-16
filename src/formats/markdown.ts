@@ -315,6 +315,7 @@ class MarkdownView implements DocumentView {
     return {
       notes: pageNotes,
       sheets: sheets.count,
+      sheetStates: sheets.states,
       count: ranges.length,
       size: (index) => (ranges[index].landscape ? turned : paper),
       render: (index) => {

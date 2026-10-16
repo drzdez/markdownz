@@ -147,6 +147,8 @@ export interface PrintPages {
   notes?: PageNotes;
   /** Excel sheets among the pages (the print dialog then offers print area or whole sheet). */
   sheets?: number;
+  /** What part of each Excel sheet the pages show, for the tags of the page view. */
+  sheetStates?: SheetState[];
   count: number;
   /** Page size in millimetres. */
   size(index: number): { width: number; height: number };

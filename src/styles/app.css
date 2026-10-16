@@ -1015,6 +1015,12 @@ img.mdz-wide {
   font: 12px/1.5 system-ui, sans-serif;
   cursor: pointer;
 }
+.page-sheet-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 4px;
+}
 .mdz-area-tag:hover {
   color: var(--fg);
   border-color: var(--accent);

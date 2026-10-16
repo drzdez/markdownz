@@ -8,6 +8,7 @@ import { bracketElement, hasMarks, labelElement, LabelRows, markSpecs, onGhostCh
 import { impose, orientSides, pageSetup, sheetGeometry, type PrintOptions, type SheetGeometry, type Side } from "../print/imposition";
 import { buildSheet } from "../print/printJob";
 import { el } from "./overlay";
+import { sheetTagText, sheetTagTitle, type SheetState } from "../formats/sheets";
 
 const PX_PER_MM = 96 / 25.4;
 const GAP = 16;
@@ -41,6 +42,8 @@ export interface PageViewHost {
   orientation(action: MarkAction): void;
   /** Whether orientation marks are shown (▥ menu). */
   showMarks(): boolean;
+  /** Click on the tag of an Excel sheet: what part of it the pages show. */
+  sheetMenu(sheet: SheetState, x: number, y: number): void;
 }
 
 export class PageView {
@@ -123,15 +126,36 @@ export class PageView {
   /** The lines explaining the orientation, and a way to drop exceptions that no longer match. */
   private showInfo(pages: PrintPages): void {
     const notes = pages.notes;
-    this.info.hidden = !notes;
-    if (!notes) return;
+    const sheets = pages.sheetStates ?? [];
+    this.info.hidden = !notes && !sheets.length;
+    // Excel sheets: the same tags as above the sheets in the continuous view.
+    const tags = sheets.length
+      ? [
+          el(
+            "div",
+            { className: "page-sheet-tags" },
+            ...sheets.map((sheet) => {
+              const tag = el("button", { type: "button", className: "mdz-area-tag", textContent: `${sheet.name}: ${sheetTagText(sheet)}`, title: sheetTagTitle(sheet) });
+              tag.addEventListener("click", () => {
+                const box = tag.getBoundingClientRect();
+                this.host.sheetMenu(sheet, box.left, box.bottom + 4);
+              });
+              return tag;
+            }),
+          ),
+        ]
+      : [];
+    if (!notes) {
+      this.info.replaceChildren(...tags);
+      return;
+    }
     const lines = notes.summary.map((line) => el("div", { textContent: line }));
     const hint = el("div", { className: "mdz-hint", textContent: "Right-click a page to turn it or add a marker; the labels beside the pages move or remove markers." });
-    const parts: HTMLElement[] = [...lines, hint];
+    const parts: HTMLElement[] = [...tags, ...lines, hint];
     if (notes.orphans.length) {
       const remove = el("button", { className: "mdz-settings-button", textContent: "Remove them" });
       remove.addEventListener("click", () => this.host.removeOrphans(notes.orphans));
-      parts.splice(lines.length, 0, el("div", {}, remove));
+      parts.splice(tags.length + lines.length, 0, el("div", {}, remove));
     }
     this.info.replaceChildren(...parts);
   }
