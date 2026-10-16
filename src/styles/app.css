@@ -949,8 +949,9 @@ img.mdz-wide {
   font-size: 0.9em;
 }
 
-/* Excel sheets (xlsx plugin): cells keep the workbook's colours, so the sheet stays light in dark mode too. */
-.markdown-body table.mdz-sheet {
+/* Excel sheets (xlsx plugin): cells keep the workbook's colours, so the sheet stays light in dark mode too.
+   ":root" outweighs the GitHub styles scoped to paper (.mdz-paper), which would pad and stripe the cells. */
+:root .markdown-body table.mdz-excel {
   background: #fff;
   color: #000;
   font-family: Aptos, Calibri, Carlito, "Segoe UI", sans-serif;
@@ -958,33 +959,33 @@ img.mdz-wide {
   font-variant: normal;
   line-height: 1.25;
 }
-.markdown-body table.mdz-sheet tr,
-.markdown-body table.mdz-sheet tr:nth-child(2n) {
+:root .markdown-body table.mdz-excel tr,
+:root .markdown-body table.mdz-excel tr:nth-child(2n) {
   background: transparent;
   border-top: 0;
 }
-.markdown-body table.mdz-sheet td {
+:root .markdown-body table.mdz-excel td {
   padding: 0;
   border: 1px solid #e1e1e1;
   vertical-align: bottom;
   white-space: nowrap;
 }
-.markdown-body table.mdz-sheet.mdz-nogrid td {
+:root .markdown-body table.mdz-excel.mdz-nogrid td {
   border-color: transparent;
 }
-.markdown-body table.mdz-sheet td > div {
+:root .markdown-body table.mdz-excel td > div {
   box-sizing: border-box;
   padding: 1px 3px;
   overflow: hidden;
 }
-.markdown-body table.mdz-sheet td > div.spill {
+:root .markdown-body table.mdz-excel td > div.spill {
   overflow: visible;
 }
-.markdown-body table.mdz-sheet td > div.wrap {
+:root .markdown-body table.mdz-excel td > div.wrap {
   white-space: normal;
   overflow-wrap: anywhere;
 }
-.markdown-body table.mdz-sheet th {
+:root .markdown-body table.mdz-excel th {
   box-sizing: border-box;
   padding: 1px 4px;
   border: 1px solid #c8c8c8;
@@ -995,8 +996,16 @@ img.mdz-wide {
   font-weight: normal;
   text-align: center;
 }
-.markdown-body table.mdz-sheet tbody th {
+:root .markdown-body table.mdz-excel tbody th {
   min-width: 32px;
+}
+/* On paper without Excel's "Print headings": the column letters keep the column widths but take no room. */
+:root .markdown-body table.mdz-excel.mdz-print-noheadings thead tr:first-child {
+  visibility: collapse;
+}
+:root .markdown-body table.mdz-excel.mdz-print-noheadings th.mdz-rh,
+:root .markdown-body table.mdz-excel.mdz-print-noheadings th.mdz-corner {
+  display: none;
 }
 
 mark.mdz-find {

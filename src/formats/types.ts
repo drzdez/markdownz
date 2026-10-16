@@ -138,6 +138,8 @@ export interface PageNotes {
 /** A document laid out as printable pages (Markdown is paginated, PDF has pages). */
 export interface PrintPages {
   notes?: PageNotes;
+  /** Excel sheets among the pages (the print dialog then offers print area or whole sheet). */
+  sheets?: number;
   count: number;
   /** Page size in millimetres. */
   size(index: number): { width: number; height: number };

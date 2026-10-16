@@ -1,6 +1,6 @@
 // Excel plugin: every visible sheet becomes a heading and a table that looks like the
 // sheet in Excel (fonts, fills, borders, number formats, merged cells, column widths),
-// shown by the app's Markdown view; its CSS gives the table class "mdz-sheet" the grid.
+// shown by the app's Markdown view; its CSS gives the table class "mdz-excel" the grid.
 
 import type { PluginApi, PluginInstance } from "../../src/plugins/api";
 import { formatNumber, formatText } from "./numfmt";
@@ -127,6 +127,20 @@ function cellBorders(sheet: Sheet, book: Workbook, anchorOf: (r: number, c: numb
   return borders;
 }
 
+/** How Excel prints the sheet, for the app's page layout (see formats/sheets.ts there). */
+function printAttributes(sheet: Sheet): string {
+  const p = sheet.print;
+  const attrs = [` data-mdz-sheet="${escape(sheet.name)}"`];
+  if (p.area) attrs.push(` data-mdz-print-area="${p.area.row},${p.area.col},${p.area.lastRow},${p.area.lastCol}"`);
+  if (p.titleRows) attrs.push(` data-mdz-print-titles="${p.titleRows[0]},${p.titleRows[1]}"`);
+  if (p.orientation) attrs.push(` data-mdz-print-orientation="${p.orientation}"`);
+  if (p.fit) attrs.push(` data-mdz-print-fit="${p.fit.width},${p.fit.height}"`);
+  if (p.scale) attrs.push(` data-mdz-print-scale="${p.scale}"`);
+  if (p.headings) attrs.push(" data-mdz-print-headings");
+  if (p.gridLines) attrs.push(" data-mdz-print-grid");
+  return attrs.join("");
+}
+
 export function sheetHtml(sheet: Sheet, book: Workbook): { html: string; rows: number; cols: number; cut: boolean } {
   const cols: number[] = [];
   for (let c = 0; c <= Math.min(sheet.lastCol, COL_LIMIT - 1); c++) if (!sheet.hiddenCols.has(c)) cols.push(c);
@@ -138,7 +152,7 @@ export function sheetHtml(sheet: Sheet, book: Workbook): { html: string; rows: n
 
   // Merged ranges: the first cell spans the visible rows and columns, the others are left out.
   const covered = new Map<string, [number, number]>();
-  const spans = new Map<string, { rows: number; cols: number; px: number }>();
+  const spans = new Map<string, { rows: number; cols: number; px: number; lastCol: number }>();
   const shownRows = new Set(rows);
   const shownCols = new Set(cols);
   for (const m of sheet.merges) {
@@ -151,7 +165,7 @@ export function sheetHtml(sheet: Sheet, book: Workbook): { html: string; rows: n
         cs++;
         px += width(c);
       }
-    spans.set(`${m.row}:${m.col}`, { rows: Math.max(rs, 1), cols: Math.max(cs, 1), px });
+    spans.set(`${m.row}:${m.col}`, { rows: Math.max(rs, 1), cols: Math.max(cs, 1), px, lastCol: m.col + m.cols - 1 });
     for (let r = m.row; r < m.row + m.rows; r++)
       for (let c = m.col; c < m.col + m.cols; c++) if (r !== m.row || c !== m.col) covered.set(`${r}:${c}`, [m.row, m.col]);
   }
@@ -191,7 +205,7 @@ export function sheetHtml(sheet: Sheet, book: Workbook): { html: string; rows: n
     reach -= width(c);
   }
 
-  const head = `<tr><th class="mdz-corner"></th>${cols.map((c) => `<th style="width:${width(c)}px;min-width:${width(c)}px">${columnName(c)}</th>`).join("")}</tr>`;
+  const head = `<tr><th class="mdz-corner"></th>${cols.map((c) => `<th data-c="${c}" style="width:${width(c)}px;min-width:${width(c)}px">${columnName(c)}</th>`).join("")}</tr>`;
   const body: string[] = [];
   for (const r of rows) {
     const height = sheet.rowHeights.get(r);
@@ -211,7 +225,7 @@ export function sheetHtml(sheet: Sheet, book: Workbook): { html: string; rows: n
       if (b?.bottom) css.push(`border-bottom:${b.bottom}`);
       const valign = style.vertical && VALIGN[style.vertical];
       if (valign && valign !== "bottom") css.push(`vertical-align:${valign}`);
-      const attrs = `${span && span.cols > 1 ? ` colspan="${span.cols}"` : ""}${span && span.rows > 1 ? ` rowspan="${span.rows}"` : ""}`;
+      const attrs = ` data-c="${c}"${span && span.lastCol > c ? ` data-ce="${span.lastCol}"` : ""}${span && span.cols > 1 ? ` colspan="${span.cols}"` : ""}${span && span.rows > 1 ? ` rowspan="${span.rows}"` : ""}`;
       const shown = cell && shownValue(cell, style, book);
       if (!shown) {
         tds.push(`<td${attrs}${css.length ? ` style="${css.join(";")}"` : ""}></td>`);
@@ -236,11 +250,11 @@ export function sheetHtml(sheet: Sheet, book: Workbook): { html: string; rows: n
         `<td${attrs}${css.length ? ` style="${css.join(";")}"` : ""}><div${cls ? ` class="${cls}"` : ""} style="${inner.join(";")}">${content.replace(/\r?\n/g, style.wrap ? "<br>" : " ")}</div></td>`,
       );
     });
-    body.push(`<tr${height !== undefined ? ` style="height:${height}px"` : ""}><th>${r + 1}</th>${tds.join("")}</tr>`);
+    body.push(`<tr data-r="${r}"${height !== undefined ? ` style="height:${height}px"` : ""}><th class="mdz-rh">${r + 1}</th>${tds.join("")}</tr>`);
   }
   const font = book.font;
   const tableCss = [font.name ? `font-family:${fontFamily(font.name)}` : "", font.size ? `font-size:${font.size}pt` : ""].filter(Boolean);
-  const html = `<table class="mdz-sheet${sheet.gridLines ? "" : " mdz-nogrid"}"${tableCss.length ? ` style="${tableCss.join(";")}"` : ""}><thead>${head}</thead><tbody>\n${body.join("\n")}\n</tbody></table>`;
+  const html = `<table class="mdz-excel${sheet.gridLines ? "" : " mdz-nogrid"}"${printAttributes(sheet)}${tableCss.length ? ` style="${tableCss.join(";")}"` : ""}><thead>${head}</thead><tbody>\n${body.join("\n")}\n</tbody></table>`;
   return { html, rows: rows.length, cols: cols.length, cut };
 }
 

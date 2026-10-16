@@ -2,7 +2,7 @@ import { strToU8, zipSync } from "fflate";
 import { beforeAll, describe, expect, it } from "vitest";
 import { columnName, sheetHtml, xlsxToMarkdown } from "./index";
 import { SHORT_DATE, formatNumber, general, serialToDate, setLocaleForTests } from "./numfmt";
-import { readWorkbook, type Sheet, type Workbook } from "./workbook";
+import { parseRange, readWorkbook, type Sheet, type Workbook } from "./workbook";
 
 const NS = 'xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"';
 const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships";
@@ -11,7 +11,7 @@ const REL = "http://schemas.openxmlformats.org/officeDocument/2006/relationships
 function workbook(): Uint8Array {
   return zipSync({
     "_rels/.rels": strToU8(`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/officeDocument" Target="xl/workbook.xml"/></Relationships>`),
-    "xl/workbook.xml": strToU8(`<workbook ${NS}><sheets><sheet name="TCO" sheetId="1" r:id="rId1"/><sheet name="Secret" sheetId="2" state="hidden" r:id="rId2"/></sheets></workbook>`),
+    "xl/workbook.xml": strToU8(`<workbook ${NS}><sheets><sheet name="TCO" sheetId="1" r:id="rId1"/><sheet name="Secret" sheetId="2" state="hidden" r:id="rId2"/></sheets><definedNames><definedName name="_xlnm.Print_Area" localSheetId="0">TCO!$A$2:$C$3</definedName><definedName name="_xlnm.Print_Titles" localSheetId="0">TCO!$1:$1</definedName><definedName name="_xlnm.Print_Area" localSheetId="1">Secret!$A$1</definedName></definedNames></workbook>`),
     "xl/_rels/workbook.xml.rels": strToU8(
       `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="${REL}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${REL}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="${REL}/styles" Target="styles.xml"/><Relationship Id="rId4" Type="${REL}/sharedStrings" Target="sharedStrings.xml"/><Relationship Id="rId5" Type="${REL}/theme" Target="theme/theme1.xml"/></Relationships>`,
     ),
@@ -27,12 +27,12 @@ function workbook(): Uint8Array {
     ),
     "xl/sharedStrings.xml": strToU8(`<sst ${NS}><si><t>TCO &lt;2026&gt;</t></si><si><t>Server</t></si><si><r><t>Total </t></r><r><rPr><b/></rPr><t>per year</t></r></si></sst>`),
     "xl/worksheets/sheet1.xml": strToU8(
-      `<worksheet ${NS}><sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="5" hidden="1"/></cols><sheetData>` +
+      `<worksheet ${NS}><sheetPr><pageSetUpPr fitToPage="1"/></sheetPr><sheetFormatPr defaultRowHeight="15"/><cols><col min="1" max="1" width="20" customWidth="1"/><col min="2" max="2" width="5" hidden="1"/></cols><sheetData>` +
         `<row r="1" ht="24" customHeight="1"><c r="A1" s="1" t="s"><v>0</v></c><c r="B1" s="1"/><c r="C1" s="1"/></row>` +
         `<row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2"><v>7</v></c><c r="C2" s="2"><v>5500</v></c></row>` +
         `<row r="3"><c r="A3" t="s"><v>2</v></c><c r="C3" s="3"><f>C2*2</f><v>11000</v></c></row>` +
         `<row r="4"><c r="A4" t="b"><v>1</v></c><c r="C4" t="e"><v>#DIV/0!</v></c></row>` +
-        `</sheetData><mergeCells count="1"><mergeCell ref="A1:C1"/></mergeCells></worksheet>`,
+        `</sheetData><mergeCells count="1"><mergeCell ref="A1:C1"/></mergeCells><printOptions headings="1"/><pageSetup paperSize="9" orientation="landscape" fitToWidth="1" fitToHeight="0"/></worksheet>`,
     ),
     "xl/worksheets/sheet2.xml": strToU8(`<worksheet ${NS}><sheetData><row r="1"><c r="A1"><v>1</v></c></row></sheetData></worksheet>`),
   });
@@ -111,24 +111,41 @@ describe("Excel plugin", () => {
     expect(sheet.rows.get(2)!.get(0)!.runs?.[1]).toEqual({ text: "per year", font: { bold: true } });
     expect(sheet.lastRow).toBe(3);
     expect(sheet.lastCol).toBe(2);
+    expect(sheet.print).toEqual({
+      area: { row: 1, col: 0, lastRow: 2, lastCol: 2 },
+      titleRows: [0, 0],
+      orientation: "landscape",
+      fit: { width: 1, height: 0 },
+      headings: true,
+      gridLines: false,
+    });
+  });
+
+  it("reads print area and title references", () => {
+    expect(parseRange("'My sheet'!$B$2:$D$9")).toEqual([{ row: 1, col: 1, lastRow: 8, lastCol: 3 }]);
+    expect(parseRange("Data!$1:$2")).toEqual([{ row: 0, col: 0, lastRow: 1, lastCol: 16383 }]);
+    expect(parseRange("Data!$A:$C")).toEqual([{ row: 0, col: 0, lastRow: 1048575, lastCol: 2 }]);
+    expect(parseRange("'a, b'!$A$1:$B$2,'a, b'!$D$1:$E$2")).toHaveLength(2);
+    expect(parseRange("#REF!")).toBeNull();
   });
 
   it("shows the sheet as Excel does", async () => {
     const md = await xlsxToMarkdown(workbook());
     expect(md).toContain("## TCO");
+    expect(md).toContain('<table class="mdz-excel" data-mdz-sheet="TCO" data-mdz-print-area="1,0,2,2" data-mdz-print-titles="0,0" data-mdz-print-orientation="landscape" data-mdz-print-fit="1,0" data-mdz-print-headings ');
     expect(md).not.toContain("Secret");
     // Hidden column B is left out, so the title spans A and C.
-    expect(md).toMatch(/<th style="width:140px;min-width:140px">A<\/th><th style="width:64px;min-width:64px">C<\/th><\/tr>/);
-    expect(md).toContain('<td colspan="2" style="background:#2f5597">');
+    expect(md).toMatch(/<th data-c="0" style="width:140px;min-width:140px">A<\/th><th data-c="2" style="width:64px;min-width:64px">C<\/th><\/tr>/);
+    expect(md).toContain('<td data-c="0" data-ce="2" colspan="2" style="background:#2f5597">');
     expect(md).toContain("TCO &lt;2026&gt;");
     expect(md).toContain("5 500 €");
     expect(md).toMatch(/font-weight:bold;color:#ff0000[^>]*>11 000 €/);
     expect(md).toContain('Total <span style="font-weight:bold">per year</span>');
     expect(md).toContain(">TRUE<");
     expect(md).toContain(">#DIV/0!<");
-    expect(md).toContain('<tr style="height:32px">');
+    expect(md).toContain('<tr data-r="0" style="height:32px"><th class="mdz-rh">1</th>');
     // The bottom border of C2 is also the top border of C3.
-    expect(md).toMatch(/<td style="border-top:1px solid #000000"><div[^>]*>11 000 €/);
+    expect(md).toMatch(/<td data-c="2" style="border-top:1px solid #000000"><div[^>]*>11 000 €/);
   });
 
   it("adds the empty columns that long text runs on over", () => {
@@ -149,6 +166,7 @@ describe("Excel plugin", () => {
       hiddenCols: new Set(),
       merges: [],
       gridLines: true,
+      print: { headings: false, gridLines: false },
     };
     const book: Workbook = { sheets: [sheet], styles: [{ format: "General", font: {} }], date1904: false, font: { size: 11 } };
     const { html, cols } = sheetHtml(sheet, book);

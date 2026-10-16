@@ -74,6 +74,32 @@ export interface Sheet {
   hiddenCols: Set<number>;
   merges: Merge[];
   gridLines: boolean;
+  print: PrintSetup;
+}
+
+/** A block of cells, 0-based and inclusive. */
+export interface Area {
+  row: number;
+  col: number;
+  lastRow: number;
+  lastCol: number;
+}
+
+/** How Excel prints the sheet (File → Print, Page Layout). */
+export interface PrintSetup {
+  /** The print area; the first one when there are several. */
+  area?: Area;
+  /** Rows repeated at the top of every page (0-based, inclusive). */
+  titleRows?: [number, number];
+  orientation?: "portrait" | "landscape";
+  /** "Fit to N pages wide by M tall"; 0 = automatic in that direction. */
+  fit?: { width: number; height: number };
+  /** Percent, when not fitted to pages. */
+  scale?: number;
+  /** Row and column headings (A, B, 1, 2) are printed. */
+  headings: boolean;
+  /** Gridlines are printed. */
+  gridLines: boolean;
 }
 
 export interface Workbook {
@@ -315,6 +341,7 @@ function readSheet(name: string, doc: Document, shared: { text: string; runs?: R
     hiddenCols: new Set(),
     merges: [],
     gridLines: !kids(kid(doc, "sheetViews"), "sheetView").some((v) => v.getAttribute("showGridLines") === "0" || v.getAttribute("showGridLines") === "false"),
+    print: { headings: false, gridLines: false },
   };
   for (const col of kids(kid(doc, "cols"), "col")) {
     const min = Number(col.getAttribute("min")) - 1;
@@ -384,7 +411,42 @@ function readSheet(name: string, doc: Document, shared: { text: string; runs?: R
       sheet.lastCol = Math.max(sheet.lastCol, c2);
     }
   }
+  const setup = kid(doc, "pageSetup");
+  const options = kid(doc, "printOptions");
+  const orientation = setup?.getAttribute("orientation");
+  if (orientation === "portrait" || orientation === "landscape") sheet.print.orientation = orientation;
+  if (flag(kid(kid(doc, "sheetPr"), "pageSetUpPr"), "fitToPage") && kid(kid(doc, "sheetPr"), "pageSetUpPr")?.hasAttribute("fitToPage")) {
+    sheet.print.fit = { width: num(setup?.getAttribute("fitToWidth")) ?? 1, height: num(setup?.getAttribute("fitToHeight")) ?? 1 };
+  } else {
+    const scale = num(setup?.getAttribute("scale"));
+    if (scale && scale !== 100) sheet.print.scale = scale;
+  }
+  sheet.print.headings = !!options?.hasAttribute("headings") && flag(options, "headings");
+  sheet.print.gridLines = !!options?.hasAttribute("gridLines") && flag(options, "gridLines");
   return sheet;
+}
+
+/**
+ * A print area or print titles reference: "'TCO'!$A$1:$T$45", "Data!$1:$2" (rows),
+ * "Data!$A:$C" (columns); several ranges are separated by commas. Null for
+ * anything else (formulas, #REF!).
+ */
+export function parseRange(text: string): Area[] | null {
+  const areas: Area[] = [];
+  for (const part of text.split(/,(?=(?:[^']*'[^']*')*[^']*$)/)) {
+    const ref = part.trim().replace(/^.*!/, "").replace(/\$/g, "");
+    let m: RegExpExecArray | null;
+    if ((m = /^([A-Z]+\d+)(?::([A-Z]+\d+))?$/i.exec(ref))) {
+      const [r1, c1] = parseRef(m[1]);
+      const [r2, c2] = parseRef(m[2] ?? m[1]);
+      areas.push({ row: Math.min(r1, r2), col: Math.min(c1, c2), lastRow: Math.max(r1, r2), lastCol: Math.max(c1, c2) });
+    } else if ((m = /^(\d+):(\d+)$/.exec(ref))) {
+      areas.push({ row: Number(m[1]) - 1, col: 0, lastRow: Number(m[2]) - 1, lastCol: 16383 });
+    } else if ((m = /^([A-Z]+):([A-Z]+)$/i.exec(ref))) {
+      areas.push({ row: 0, col: parseRef(`${m[1]}1`)[1], lastRow: 1048575, lastCol: parseRef(`${m[2]}1`)[1] });
+    } else return null;
+  }
+  return areas.length ? areas : null;
 }
 
 /** Resolves a relationship target against the folder of the part that refers to it. */
@@ -440,15 +502,36 @@ export function readWorkbook(data: Uint8Array): Workbook {
   const shared = sharedDoc ? kids(sharedDoc, "si").map((si) => readText(si, theme)) : [];
   const date1904 = flag(kid(book, "workbookPr"), "date1904") && !!kid(book, "workbookPr")?.hasAttribute("date1904");
 
+  // Print areas and titles are defined names local to a sheet (its index among all sheets).
+  const printNames = new Map<number, { area?: Area; titleRows?: [number, number] }>();
+  for (const n of kids(kid(book, "definedNames"), "definedName")) {
+    const index = num(n.getAttribute("localSheetId"));
+    const name = n.getAttribute("name");
+    if (index === undefined || (name !== "_xlnm.Print_Area" && name !== "_xlnm.Print_Titles")) continue;
+    const ranges = parseRange(n.textContent ?? "");
+    if (!ranges) continue;
+    const entry = printNames.get(index) ?? {};
+    if (name === "_xlnm.Print_Area") entry.area = ranges[0];
+    else {
+      // Titles: rows ("$1:$2"), possibly with columns ("$A:$A") that are not repeated here.
+      const rows = ranges.find((r) => r.col === 0 && r.lastCol === 16383);
+      if (rows) entry.titleRows = [rows.row, rows.lastRow];
+    }
+    printNames.set(index, entry);
+  }
+
   const sheets: Sheet[] = [];
-  for (const s of kids(kid(book, "sheets"), "sheet")) {
+  for (const [index, s] of kids(kid(book, "sheets"), "sheet").entries()) {
     if (["hidden", "veryHidden"].includes(s.getAttribute("state") ?? "")) continue;
     const id = s.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") ?? s.getAttribute("r:id");
     const rel = id ? rels.get(id) : undefined;
     // Chart sheets and dialog sheets have no cells.
     if (!rel || !rel.type.endsWith("/worksheet")) continue;
     const doc = read(rel.target);
-    if (doc) sheets.push(readSheet(s.getAttribute("name") ?? "Sheet", doc, shared, styles, theme));
+    if (!doc) continue;
+    const sheet = readSheet(s.getAttribute("name") ?? "Sheet", doc, shared, styles, theme);
+    Object.assign(sheet.print, printNames.get(index));
+    sheets.push(sheet);
   }
   return { sheets, styles, date1904, font };
 }

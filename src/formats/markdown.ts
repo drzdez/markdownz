@@ -10,6 +10,7 @@ import { el } from "../ui/overlay";
 import { Ruler } from "../ui/ruler";
 import type { DocExceptions } from "../print/orientation";
 import { planOrientation, readBlocks } from "./pageOrientation";
+import { prepareSheetsForPaper } from "./sheets";
 import { DEFAULT_TEXT_WIDTH, fitObjectsForPaper, fitWideObjects, type Widths } from "./wideObjects";
 import type { DocumentView, FormatPlugin, OutlineItem, PrintPages, ViewContext, ViewHost } from "./types";
 
@@ -244,7 +245,7 @@ class MarkdownView implements DocumentView {
   async printPages(
     paper: { width: number; height: number },
     _onProgress?: unknown,
-    layout: PageLayoutOptions = { wideTables: "shrink", fontPt: 10.5, minFontPt: 7, overflow: "split", repeatHeaders: true },
+    layout: PageLayoutOptions = { wideTables: "shrink", fontPt: 10.5, minFontPt: 7, overflow: "split", repeatHeaders: true, sheetArea: "printArea" },
   ): Promise<PrintPages> {
     const contentWidth = paper.width - 2 * PAGE_MARGIN;
     const contentHeight = paper.height - 2 * PAGE_MARGIN;
@@ -256,6 +257,7 @@ class MarkdownView implements DocumentView {
     ensurePaperStyle();
     const article = await getRenderer().render(this.source, { docPath: this.path, theme: "light" });
     article.style.fontSize = `${layout.fontPt}pt`;
+    const sheets = prepareSheetsForPaper(article, layout.sheetArea);
     const measure = el("div", { className: "mdz-paper mdz-measure" }, article);
     measure.style.width = `${contentWidth}mm`;
     document.body.append(measure);
@@ -288,6 +290,7 @@ class MarkdownView implements DocumentView {
 
     return {
       notes: notes(ranges),
+      sheets,
       count: ranges.length,
       size: (index) => (ranges[index].landscape ? turned : paper),
       render: (index) => {

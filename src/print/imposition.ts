@@ -14,6 +14,8 @@ export type ScaleMode = "fit" | "percent" | "width" | "height";
 export type WideTables = "landscape" | "shrink" | "none";
 /** Content still too wide at the smallest text size: table columns continue below, or it is cut off. */
 export type Overflow = "split" | "cut";
+/** Excel sheets on paper: the print area when the sheet has one, or the whole sheet. */
+export type SheetArea = "printArea" | "all";
 
 /** How a reflowing document (Markdown) is laid out on its pages. */
 export interface PageLayoutOptions {
@@ -26,6 +28,8 @@ export interface PageLayoutOptions {
   overflow: Overflow;
   /** Repeat the header rows of a table on every page it continues on. */
   repeatHeaders: boolean;
+  /** What of an Excel sheet is printed; it is always scaled to the page width, never cut. */
+  sheetArea: SheetArea;
 }
 
 export interface PrintOptions {
@@ -59,6 +63,7 @@ export interface PrintOptions {
   minFontPt: number;
   overflow: Overflow;
   repeatHeaders: boolean;
+  sheetArea: SheetArea;
 }
 
 /** Defaults (also what Reset restores): automatic where possible, two-sided, no margins, no frames. */
@@ -82,6 +87,7 @@ export const DEFAULT_PRINT_OPTIONS: PrintOptions = {
   minFontPt: 7,
   overflow: "split",
   repeatHeaders: true,
+  sheetArea: "printArea",
 };
 
 /**
@@ -95,10 +101,11 @@ export function pageSetup(options: PrintOptions): { format: { width: number; hei
   const format = wide ? { width: paper.height, height: paper.width } : paper;
   const wideTables: WideTables = wide && options.wideTables === "landscape" ? "shrink" : options.wideTables;
   const { fontPt, minFontPt, overflow, repeatHeaders } = options;
+  const sheetArea = options.sheetArea ?? "printArea";
   return {
     format,
-    layout: { wideTables, fontPt, minFontPt, overflow, repeatHeaders },
-    key: JSON.stringify([options.paper, wide, wideTables, fontPt, minFontPt, overflow, repeatHeaders]),
+    layout: { wideTables, fontPt, minFontPt, overflow, repeatHeaders, sheetArea },
+    key: JSON.stringify([options.paper, wide, wideTables, fontPt, minFontPt, overflow, repeatHeaders, sheetArea]),
   };
 }
 

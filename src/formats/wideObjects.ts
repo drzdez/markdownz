@@ -8,6 +8,7 @@
 
 import { groupColumns, type WideBlock } from "../print/paginate";
 import type { WideTables } from "../print/imposition";
+import { fitsOnePageTall, isSheet } from "./sheets";
 
 /** Widths in CSS px at 100 % zoom (they scale with the zoom like the text). */
 export interface Widths {
@@ -211,10 +212,15 @@ const BORDER_SLACK = 2;
 export function fitObjectsForPaper(article: HTMLElement, fit: PaperFit): { wide: PaperWide[]; overflowing: Set<HTMLElement> } {
   let objects = wideCandidates(article).filter((o) => o.kind === "rigid");
   let sizes = measureObjects(objects, 1);
-  const roomFor = (element: HTMLElement, available: number) => (fit.modeFor(element) === "landscape" ? fit.landscapeRoom : available);
+  // Excel sheets are never cut: "as is" shrinks them too.
+  const modeFor = (element: HTMLElement): WideTables => {
+    const mode = fit.modeFor(element);
+    return mode === "none" && isSheet(element) ? "shrink" : mode;
+  };
+  const roomFor = (element: HTMLElement, available: number) => (modeFor(element) === "landscape" ? fit.landscapeRoom : available);
   // Split tables that cannot fit even at the smallest text size, then measure again.
   const split = objects.filter(({ element }, i) => {
-    if (!fit.split || sizes.least[i] <= sizes.available[i] + 1 || element.tagName !== "TABLE" || fit.modeFor(element) === "none") return false;
+    if (!fit.split || sizes.least[i] <= sizes.available[i] + 1 || element.tagName !== "TABLE" || isSheet(element) || fit.modeFor(element) === "none") return false;
     const scale = minScale(element, fit.minFontPx);
     const room = roomFor(element, sizes.available[i]);
     return sizes.least[i] * scale > room + 1 && splitTable(element as HTMLTableElement, room / scale);
@@ -230,7 +236,7 @@ export function fitObjectsForPaper(article: HTMLElement, fit: PaperFit): { wide:
   objects.forEach(({ element }, i) => {
     if (least[i] <= available[i] + 1) return; // fits the text column
     overflowing.add(element);
-    const mode = fit.modeFor(element);
+    const mode = modeFor(element);
     if (mode === "none") return; // as is
     const room = roomFor(element, available[i]);
     const style = element.style;
@@ -239,7 +245,8 @@ export function fitObjectsForPaper(article: HTMLElement, fit: PaperFit): { wide:
       // Enough room once wider than the text: unwrap as far as the room allows.
       style.width = `${Math.min(most[i], room) + BORDER_SLACK}px`;
     } else {
-      const scale = Math.max(room / (least[i] + BORDER_SLACK), minScale(element, fit.minFontPx));
+      // Sheets fit the page width at any size, as Excel's "Fit all columns on one page".
+      const scale = Math.max(room / (least[i] + BORDER_SLACK), isSheet(element) ? 0 : minScale(element, fit.minFontPx));
       if (fit.split && element.tagName === "PRE" && (least[i] + BORDER_SLACK) * scale > room + 1) {
         // Code cannot shrink further: wrap the long lines (the code element inside sets white-space itself).
         Object.assign(style, { width: `${room / scale}px` });
@@ -248,6 +255,16 @@ export function fitObjectsForPaper(article: HTMLElement, fit: PaperFit): { wide:
       style.zoom = String(scale);
     }
     if (mode === "landscape") wide.push(element);
+  });
+  // "Fit to 1 page tall": a sheet that is still taller than its page shrinks further.
+  objects.forEach(({ element }) => {
+    if (!isSheet(element) || !fitsOnePageTall(element)) return;
+    const height = (wide.includes(element) ? fit.landscapeHeight : fit.portraitHeight) * 0.9;
+    const scale = parseFloat(element.style.zoom) || 1;
+    const shown = element.getBoundingClientRect().height;
+    if (shown <= height) return;
+    if (!element.style.width) Object.assign(element.style, { boxSizing: "border-box", maxWidth: "none", overflow: "visible" });
+    element.style.zoom = String((scale * height) / shown);
   });
   // Diagrams and pictures scale freely, so they are never cut: wider than the text they get
   // a landscape page in landscape mode, and every one is kept within the height of its page.

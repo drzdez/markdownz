@@ -19,6 +19,7 @@ import {
   type ScaleMode,
   type Side,
   type Overflow,
+  type SheetArea,
   type WideTables,
 } from "../print/imposition";
 import { buildSheet, printSides } from "../print/printJob";
@@ -264,6 +265,21 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     },
   );
   overflow.title = "Still too wide at the smallest table text: table columns continue below (first column repeated) and long code lines wrap, or the rest is cut off";
+  // Excel sheets: offered once the pages show there are any.
+  const sheetArea = select(
+    [
+      ["printArea", "Print area (when set)"],
+      ["all", "Whole sheet"],
+    ],
+    options.sheetArea,
+    (v) => {
+      options.sheetArea = v as SheetArea;
+      void changed();
+    },
+  );
+  sheetArea.title = "What of each Excel sheet is printed: the print area set in Excel, or the whole sheet. Either is scaled to the page width, never cut off";
+  const sheetField = el("label", { className: "mdz-field" }, el("span", { textContent: "Excel sheets" }), sheetArea);
+  sheetField.hidden = true;
   const wideField = el("label", { className: "mdz-field" }, el("span", { textContent: "Wide tables" }), wideTables);
   const minFontField = el("label", { className: "mdz-field" }, el("span", { textContent: "Smallest table text pt" }), minFont);
   const overflowField = el("label", { className: "mdz-field" }, el("span", { textContent: "Still too wide" }), overflow);
@@ -276,6 +292,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     minFontField,
     overflowField,
     repeatLabel,
+    sheetField,
   );
 
   const summary = el("p", { className: "mdz-print-summary" });
@@ -346,6 +363,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     fontSize.value = String(options.fontPt);
     overflow.value = options.overflow;
     repeatHeaders.checked = options.repeatHeaders;
+    sheetArea.value = options.sheetArea;
     syncScale();
   }
 
@@ -369,6 +387,7 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
       layout,
     );
     pages = lastPages = result;
+    sheetField.hidden = !result.sheets;
     pagesKey = key;
     return result;
   }
