@@ -13,7 +13,9 @@ import { dropIndex, indicesToClose, moveItem, type CloseScope } from "./tabops";
 import { showContextMenu, visibleKeys, type MenuItem } from "./ui/contextMenu";
 import { folderIcon } from "./ui/icons";
 import { DEFAULT_PRINT_OPTIONS, type Orientation, type PrintOptions } from "./print/imposition";
-import { pruneExceptions, sameAnchor, type BlockAnchor, type LocalException } from "./print/orientation";
+import { cropText, pruneExceptions, sameAnchor, withItems, type BlockAnchor, type Crop, type DocExceptions, type LocalException } from "./print/orientation";
+import { addToProjectFile, EMPTY_PROJECT, PROJECT_EXTENSION, serializeProject, setProjectFormats } from "./formats/project";
+import { ViewStore } from "./viewStore";
 import { insertLine, isMarkerLine, moveLine, onlyMarkersChanged, removeLine, replaceLine } from "./print/markerEdit";
 import { setGhost, type MarkAction } from "./ui/orientationMarks";
 import type { OrientationTarget } from "./formats/types";
@@ -150,11 +152,19 @@ export class App {
   private saveTimer?: number;
   private watched = "";
   private changeTimers = new Map<string, number>();
+  /** Your view settings of documents, one file per document (see viewStore.ts). */
+  private viewStore = new ViewStore();
+  /** Tabs chosen with Ctrl+click (e.g. to make a print project of them). */
+  private selected = new Set<Tab>();
 
   async start(): Promise<void> {
     const saved = await backend.loadState<Partial<Config>>("config");
     this.config = { ...DEFAULT_CONFIG, ...saved };
-    if (this.config.pageExceptions) this.config.pageExceptions = pruneExceptions(this.config.pageExceptions, Date.now());
+    // Your view settings live in their own files; versions up to 0.4.14 kept them in the config.
+    const stored = await this.viewStore.load();
+    this.config.pageExceptions = pruneExceptions({ ...saved?.pageExceptions, ...stored }, Date.now());
+    if (saved?.pageExceptions && (await this.viewStore.sync(this.config.pageExceptions))) await this.persistConfig();
+    setProjectFormats((path) => formatFor(path, this.config));
     this.session = { ...DEFAULT_SESSION, ...(await backend.loadState<Session>("session")) };
     initTheme(this.config.theme, () => this.rerenderAll());
     await plugins.loadInstalled().catch((e) => console.warn("cannot list the installed plugins", e));
@@ -210,7 +220,7 @@ export class App {
     try {
       const names = ids.length ? await plugins.installChosen(this.config, ids) : [];
       this.config = { ...this.config, installerPluginsDone: true };
-      void backend.saveState("config", this.config);
+      void this.persistConfig();
       if (names.length) {
         this.pluginsChanged();
         toast(`Installed the plugins chosen in the installer: ${names.join(", ")}. Settings → Plugins adds or removes plugins.`);
@@ -226,7 +236,7 @@ export class App {
     const releases = releasesSince(RELEASES, this.config.seenVersion, APP_VERSION);
     const firstSeen = this.config.seenVersion;
     this.config = { ...this.config, seenVersion: APP_VERSION };
-    void backend.saveState("config", this.config);
+    void this.persistConfig();
     if (!releases.length) return false;
     // Installed anew or from a version without plugins: say that they exist.
     const newUser = offerPlugins && firstSeen === undefined;
@@ -241,7 +251,7 @@ export class App {
    */
   async checkUpdates(manual: boolean): Promise<void> {
     this.config = { ...this.config, lastUpdateCheck: Date.now() };
-    void backend.saveState("config", this.config);
+    void this.persistConfig();
     let update: backend.AvailableUpdate | null;
     try {
       update = await backend.checkForUpdate();
@@ -260,7 +270,7 @@ export class App {
       openDownloadPage: () => backend.openExternal(`https://github.com/drzdez/markdownz/releases/tag/v${available.version}`),
       skip: () => {
         this.config = { ...this.config, skippedVersion: available.version };
-        void backend.saveState("config", this.config);
+        void this.persistConfig();
       },
     });
   }
@@ -333,6 +343,7 @@ export class App {
       if (tab.format) this.session.recent = touchRecent(this.session.recent, tab.path, tab.history.current.title, Date.now());
     }
     this.touchExceptions(tab.path);
+    void this.followMoved(tab);
     if (tab === this.active) tab.scroller?.focus({ preventScroll: true });
     this.scheduleSave();
   }
@@ -399,8 +410,107 @@ export class App {
       { label: "Reopen closed tab", hint: "Ctrl+Shift+T", disabled: !this.session.closed.length, action: () => this.reopenClosed() },
       null,
       { label: "Print…", hint: "Ctrl+P", disabled: tab !== this.active || !tab.view?.printPages, action: () => this.print() },
+      ...this.projectItems(tab, x, y),
       ...this.openWithItems(tab.path, apps, false),
     ]);
+  }
+
+  /**
+   * Print project entries of the tab menu: for the tab, or for all tabs chosen
+   * with Ctrl+click when it is one of them.
+   */
+  private projectItems(tab: Tab, x: number, y: number): MenuItem[] {
+    const chosen = this.selected.has(tab) && this.selected.size > 1 ? this.tabs.filter((t) => this.selected.has(t)) : [tab];
+    const paths = chosen.filter((t) => this.printable(t.path)).map((t) => t.path);
+    const what = paths.length > 1 ? `${paths.length} documents` : "the document";
+    const items: MenuItem[] = [
+      {
+        label: paths.length > 1 ? `Add ${paths.length} tabs to a print project…` : "Add to print project…",
+        detail: paths.length ? `Print ${what} together with others · Ctrl+click tabs to choose several` : "Print projects and documents that cannot be printed are left out",
+        disabled: !paths.length,
+        action: () => this.addToProjectMenu(paths, x, y),
+      },
+    ];
+    if (paths.length > 1) items.push({ label: `New print project from ${paths.length} tabs…`, detail: "In the order of the tabs", action: () => void this.newProject(paths) });
+    return items;
+  }
+
+  /** Documents that a print project can hold. */
+  private printable(path: string): boolean {
+    const format = formatFor(path, this.config);
+    return !!format && format.id !== "project";
+  }
+
+  /**
+   * Where to add documents: an open print project (after confirming), a new
+   * one, one from the recent documents or another one chosen from disk.
+   */
+  private addToProjectMenu(paths: string[], x: number, y: number): void {
+    const open = this.tabs.filter((t) => extname(t.path) === PROJECT_EXTENSION);
+    const recent = this.session.recent.filter((r) => extname(r.path) === PROJECT_EXTENSION && !r.missing && !open.some((t) => samePath(t.path, r.path)));
+    const what = paths.length > 1 ? `${paths.length} documents` : basename(paths[0] ?? "");
+    const items: (MenuItem | null)[] = [{ label: `Add ${what} to a print project`, disabled: true, action: () => {} }, null];
+    for (const t of open) items.push({ label: t.title, detail: `open · ${t.path}`, action: () => this.confirmAddToProject(t.path, t.title, paths) });
+    if (open.length) items.push(null);
+    items.push({ label: "New print project…", detail: "Choose where to save it", action: () => void this.newProject(paths) });
+    for (const r of recent.slice(0, 8)) {
+      items.push({ label: r.title || basename(r.path), detail: `${relativeTime(r.opened, Date.now())} · ${r.path}`, action: () => void this.addToProject(r.path, paths) });
+    }
+    items.push({
+      label: "Other print project…",
+      detail: "Choose a .mdzprint file",
+      action: () => void backend.pickFiles([{ name: "Markdownz print project", extensions: [PROJECT_EXTENSION] }]).then((files) => {
+        if (files[0]) void this.addToProject(files[0], paths);
+      }),
+    });
+    showContextMenu(x, y, items);
+  }
+
+  /** An open print project gets the documents only after a confirmation. */
+  private confirmAddToProject(projectPath: string, title: string, paths: string[]): void {
+    const add = el("button", { className: "primary", textContent: "Add" });
+    const cancel = el("button", { textContent: "Cancel" });
+    const layer = openModal(
+      "Add to print project",
+      el(
+        "div",
+        {},
+        el("p", { textContent: `Add to the open print project “${title}”:` }),
+        el("ul", {}, ...paths.map((p) => el("li", { textContent: basename(p), title: p }))),
+        el("p", { className: "mdz-hint", textContent: "They are printed after its documents; the order can be changed in the project." }),
+        el("div", { className: "mdz-print-buttons" }, el("span", { className: "spacer" }), cancel, add),
+      ),
+    );
+    cancel.addEventListener("click", () => layer.close());
+    add.addEventListener("click", () => {
+      layer.close();
+      void this.addToProject(projectPath, paths, false);
+    });
+    add.focus();
+  }
+
+  /** Adds documents to a print project file and shows the project (`show` false: an open one stays in the background). */
+  private async addToProject(projectPath: string, paths: string[], show = true): Promise<void> {
+    let added: string[];
+    try {
+      added = await addToProjectFile(projectPath, paths);
+    } catch (e) {
+      toast(`Cannot add to the print project: ${e}`, "warning");
+      return;
+    }
+    const name = basename(projectPath).replace(/\.mdzprint$/i, "");
+    const left = paths.length - added.length;
+    toast(
+      added.length
+        ? `Added to print project “${name}”: ${added.map((p) => basename(p)).join(", ")}${left ? ` (${left} already in it)` : ""}.`
+        : `Already in print project “${name}”.`,
+    );
+    this.selected.clear();
+    const tab = this.tabs.find((t) => samePath(t.path, projectPath));
+    if (tab && this.panes.includes(tab)) void this.renderTab(tab, "keep");
+    else if (tab) tab.stale = true;
+    if (show) await this.openFiles([projectPath]);
+    else this.renderTabbar();
   }
 
   /** The file itself on the clipboard: paste it into a folder or an e-mail. */
@@ -572,9 +682,36 @@ export class App {
     }));
     showContextMenu(anchor ? anchor.left : 40, anchor ? anchor.bottom + 4 : 40, [
       { label: "Open file…", hint: "Ctrl+O", action: () => void this.openDialog() },
+      {
+        label: "New print project…",
+        detail: "Several documents printed one after another as one job",
+        action: () => void this.newProject(),
+      },
       null,
       ...(recent.length ? recent : [{ label: "No recent documents", disabled: true, action: () => {} }]),
     ]);
+  }
+
+  /**
+   * Creates a print project with the documents shown side by side (or the
+   * active one) and opens it; more documents are added in the project.
+   */
+  private async newProject(documents?: string[]): Promise<void> {
+    const paths = documents ?? (this.panes.length > 1 ? this.panes : this.active ? [this.active] : []).filter((t) => this.printable(t.path)).map((t) => t.path);
+    const folder = paths[0] ? dirname(paths[0]) : "";
+    const path = await backend.pickSaveFile(folder ? `${folder}${folder.includes("\\") ? "\\" : "/"}Print project.${PROJECT_EXTENSION}` : `Print project.${PROJECT_EXTENSION}`, [
+      { name: "Markdownz print project", extensions: [PROJECT_EXTENSION] },
+    ]);
+    if (!path) return;
+    const file = extname(path) === PROJECT_EXTENSION ? path : `${path}.${PROJECT_EXTENSION}`;
+    try {
+      await backend.writeProject(file, serializeProject({ ...EMPTY_PROJECT, documents: paths }, file));
+    } catch (e) {
+      toast(`Cannot create the project: ${e}`, "warning");
+      return;
+    }
+    this.selected.clear();
+    await this.openFiles([file]);
   }
 
   private async openDialog(): Promise<void> {
@@ -700,6 +837,11 @@ export class App {
     return { ...DEFAULT_PRINT_OPTIONS, ...this.config.print };
   }
 
+  /** A print project has print settings of its own once it was printed; other documents use the common ones. */
+  private printOptionsFor(tab: Tab): PrintOptions {
+    return { ...this.printOptions(), ...tab.view?.printSettings?.() };
+  }
+
   /** Lays the tab's document out as printed pages with the current print settings (when not done yet). */
   private async buildPages(tab: Tab): Promise<void> {
     const view = tab.view;
@@ -721,9 +863,10 @@ export class App {
     }
     tab.pages.setLayout(this.session.pageColumns as PageColumns, tab.pageScale);
     tab.showMode();
-    const options = this.printOptions();
-    // Your orientation exceptions for the document change its pages too.
-    const key = `${tab.version}:${pageViewKey(options)}:${JSON.stringify(this.config.pageExceptions?.[tab.path]?.items ?? [])}`;
+    const options = this.printOptionsFor(tab);
+    // Your settings of the document (and of the documents of a print project) change its pages too.
+    const settings = [tab.path, ...(view.sources?.() ?? [])].map((p) => this.config.pageExceptions?.[p] ?? null).map((d) => d && [d.items, d.crop ?? null]);
+    const key = `${tab.version}:${pageViewKey(options)}:${JSON.stringify(settings)}`;
     if (tab.pages.key === key) return;
     try {
       await tab.pages.build(view, options, key);
@@ -841,7 +984,8 @@ export class App {
     const all = { ...this.config.pageExceptions };
     const items = (all[path]?.items ?? []).filter((e) => !(e.pageBreak && sameAnchor(e.anchor, anchor)));
     if (on) items.push({ anchor, pageBreak: true, label });
-    if (items.length) all[path] = { used: Date.now(), items };
+    const doc = withItems(all[path], items);
+    if (doc) all[path] = doc;
     else delete all[path];
     void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(path));
     toast(on ? `Page break above ${label} (your exception on this computer).` : `Your page break above ${label} removed.`);
@@ -929,7 +1073,8 @@ export class App {
     if (choice.area) kept.area = choice.area;
     if (choice.fit) kept.fit = choice.fit;
     if (kept.area || kept.fit) items.push({ anchor, ...kept, label: `sheet “${sheet.name}”` });
-    if (items.length) all[path] = { used: Date.now(), items };
+    const doc = withItems(all[path], items);
+    if (doc) all[path] = doc;
     else delete all[path];
     void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(path));
     const area = !kept.area ? "automatic" : kept.area === "printArea" ? "print area" : kept.area === "all" ? "whole sheet" : kept.area;
@@ -942,7 +1087,8 @@ export class App {
     // Page breaks and sheet views of the block stay.
     const items = (all[path]?.items ?? []).filter((e) => !e.orientation || !sameAnchor(e.anchor, target.anchor));
     if (orientation) items.push({ anchor: target.anchor, orientation, label: target.label });
-    if (items.length) all[path] = { used: Date.now(), items };
+    const doc = withItems(all[path], items);
+    if (doc) all[path] = doc;
     else delete all[path];
     // The views read the exceptions from the config once it is applied.
     void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(path));
@@ -953,19 +1099,49 @@ export class App {
     );
   }
 
+  /** Stores (or removes, with null) the crop window of the pages of a document (PDF). */
+  private setCrop(path: string, crop: Crop | null): void {
+    const all = { ...this.config.pageExceptions };
+    const doc: DocExceptions = { ...all[path], used: Date.now(), items: all[path]?.items ?? [] };
+    if (crop) doc.crop = crop;
+    else delete doc.crop;
+    if (doc.items.length || doc.crop) all[path] = doc;
+    else delete all[path];
+    void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(path));
+    toast(crop ? `Crop window: ${cropText(crop)}. Printed pages show only this window of every page (your setting on this computer).` : "Crop window removed: whole pages are printed again.");
+  }
+
   private removeExceptions(path: string, remove: LocalException[]): void {
     const all = { ...this.config.pageExceptions };
     const gone = (e: LocalException) => remove.some((r) => sameAnchor(r.anchor, e.anchor) && r.orientation === e.orientation && !!r.pageBreak === !!e.pageBreak);
     const items = (all[path]?.items ?? []).filter((e) => !gone(e));
-    if (items.length) all[path] = { ...all[path], items };
+    const doc = withItems(all[path], items);
+    if (doc) all[path] = doc;
     else delete all[path];
     void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(path));
     toast(`Removed ${remove.length} exception${remove.length > 1 ? "s" : ""} that no longer matched.`);
   }
 
-  /** Rebuilds the shown page views of a document (after its exceptions changed). */
+  /** Rebuilds the shown page views showing a document, also within a print project (after its settings changed). */
   private refreshPageViews(path: string): void {
-    for (const t of this.panes) if (t.pageMode && samePath(t.path, path)) void this.buildPages(t);
+    for (const t of this.panes) {
+      if (t.pageMode && (samePath(t.path, path) || t.view?.sources?.().some((p) => samePath(p, path)))) void this.buildPages(t);
+    }
+  }
+
+  /** A document without settings that has the content of one whose file is gone: its settings move with it. */
+  private async followMoved(tab: Tab): Promise<void> {
+    const path = tab.path;
+    const all = this.config.pageExceptions ?? {};
+    if (!tab.format || all[path]) return;
+    const exists = (p: string) => backend.resolvePath(p).then(() => true, () => false);
+    const old = await this.viewStore.moved(path, all, exists);
+    if (!old || this.config.pageExceptions?.[path]) return;
+    const next = { ...this.config.pageExceptions, [path]: { ...all[old], used: Date.now() } };
+    delete next[old];
+    await this.updateConfig({ ...this.config, pageExceptions: next });
+    this.refreshTab(tab);
+    toast(`Your view settings followed the document from ${old}.`);
   }
 
   /** Keeps the exceptions of a document that is still used; old ones are pruned at start. */
@@ -973,7 +1149,7 @@ export class App {
     const doc = this.config.pageExceptions?.[path];
     if (!doc || Date.now() - doc.used < 24 * 3600 * 1000) return;
     this.config = { ...this.config, pageExceptions: { ...this.config.pageExceptions, [path]: { ...doc, used: Date.now() } } };
-    void backend.saveState("config", this.config);
+    void this.persistConfig();
   }
 
   /** The toolbar's view menu: documents side by side and the page view. */
@@ -1015,6 +1191,13 @@ export class App {
         detail: "Where pages turn landscape and why: markers, rules, your exceptions (never printed)",
         className: check(this.config.orientationMarks !== false),
         action: () => void this.updateConfig({ ...this.config, orientationMarks: this.config.orientationMarks === false }),
+      },
+      null,
+      {
+        label: "Folder of your view settings",
+        detail: "One readable file per document: exceptions, page breaks, sheet parts, crop windows",
+        disabled: !backend.inTauri,
+        action: () => void backend.viewsFolder().then((dir) => backend.openFolder(dir)),
       },
     ]);
   }
@@ -1097,6 +1280,13 @@ export class App {
       orientationMenu: (target: OrientationTarget, x: number, y: number) => this.showPageMenu(tab, target, x, y),
       sheetMenu: (sheet: SheetState, x: number, y: number) => this.showSheetMenu(tab, sheet, x, y),
       sheetColumns: (sheet: SheetState, first: number, last: number) => this.setSheetChoice(tab.path, sheet, { ...sheet.choice, area: columnsChoice(sheet, first, last) }),
+      crop: (crop: Crop | null) => this.setCrop(tab.path, crop),
+      project: {
+        open: (path: string) => void this.openFiles([path]),
+        pick: () => backend.pickFiles(fileFilters(this.config)),
+        openDocuments: () => this.tabs.filter((t) => t !== tab && t.view?.printPages).map((t) => t.path),
+        notify: (message: string) => toast(message, "warning"),
+      },
     };
   }
 
@@ -1126,7 +1316,7 @@ export class App {
       const all = { ...this.config.pageExceptions };
       const items = (all[tab.path]?.items ?? []).filter((e) => !(e.pageBreak && (sameAnchor(e.anchor, action.from) || sameAnchor(e.anchor, action.to))));
       items.push({ anchor: action.to, pageBreak: true, label: action.label });
-      all[tab.path] = { used: Date.now(), items };
+      all[tab.path] = withItems(all[tab.path], items)!;
       void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(tab.path));
       toast(`Your page break moved above ${action.label}.`);
       return;
@@ -1135,7 +1325,7 @@ export class App {
       const all = { ...this.config.pageExceptions };
       const items = (all[tab.path]?.items ?? []).filter((e) => !e.orientation || (!sameAnchor(e.anchor, action.from) && !sameAnchor(e.anchor, action.to)));
       items.push({ anchor: action.to, orientation: action.orientation, label: action.label });
-      all[tab.path] = { used: Date.now(), items };
+      all[tab.path] = withItems(all[tab.path], items)!;
       void this.updateConfig({ ...this.config, pageExceptions: all }).then(() => this.refreshPageViews(tab.path));
       toast(`Your exception moved to ${action.label}.`);
       return;
@@ -1445,16 +1635,32 @@ export class App {
       toast("This document cannot be printed.");
       return;
     }
-    openPrintDialog(tab.view, tab.title, { ...DEFAULT_PRINT_OPTIONS, ...this.config.print }, (options) => {
+    const view = tab.view;
+    if (view.setPrintSettings) {
+      // A print project keeps its own print settings in its file.
+      openPrintDialog(view, tab.title, this.printOptionsFor(tab), (options) => {
+        const before = pageViewKey(this.printOptionsFor(tab));
+        view.setPrintSettings!(options);
+        if (pageViewKey(this.printOptionsFor(tab)) !== before && tab.pageMode) void this.buildPages(tab);
+      });
+      return;
+    }
+    const extras = {
+      addToProject: (anchor: HTMLElement) => {
+        const box = anchor.getBoundingClientRect();
+        this.addToProjectMenu([tab.path], box.left, box.bottom + 4);
+      },
+    };
+    openPrintDialog(view, tab.title, { ...DEFAULT_PRINT_OPTIONS, ...this.config.print }, (options) => {
       const before = pageViewKey(this.printOptions());
       this.config = { ...this.config, print: { ...options } };
-      void backend.saveState("config", this.config);
+      void this.persistConfig();
       if (pageViewKey(this.printOptions()) !== before) {
         this.printSettingsChanged();
         // The orientation marks follow the print settings too.
         for (const format of FORMATS) format.configure?.(this.config);
       }
-    });
+    }, extras);
   }
 
   private async updateConfig(config: Config): Promise<void> {
@@ -1462,12 +1668,19 @@ export class App {
     const settingsChanged =
       JSON.stringify([config.plugins, config.formats]) !== JSON.stringify([this.config.plugins, this.config.formats]);
     this.config = config;
-    await backend.saveState("config", config);
+    await this.persistConfig();
     // Cheap: also applies layout settings (wide objects, ruler) to the open views without re-rendering.
     for (const format of FORMATS) format.configure?.(config);
     for (const t of this.tabs) t.pages?.refreshMarks();
     if (themeChanged) setTheme(config.theme); // re-renders via the theme listener when needed
     if (settingsChanged) this.rerenderAll();
+  }
+
+  /** Saves the config; your view settings of documents go to their own files. */
+  private async persistConfig(): Promise<void> {
+    const { pageExceptions, ...rest } = this.config;
+    await backend.saveState("config", rest);
+    await this.viewStore.sync(pageExceptions ?? {});
   }
 
   // ------------------------------------------------------------------ UI
@@ -1488,7 +1701,11 @@ export class App {
     for (const t of this.panes) t.headTitle.textContent = t.paged ? `${t.title} · pages` : t.title;
     const items = this.tabs.map((t) => {
       const shown = split && this.panes.includes(t);
-      const item = el("div", { className: `tab${t === tab ? " active" : ""}${shown ? " shown" : ""}`, title: shown ? `${t.path} (shown side by side)` : t.path });
+      const chosen = this.selected.has(t) && this.selected.size > 1;
+      const item = el("div", {
+        className: `tab${t === tab ? " active" : ""}${shown ? " shown" : ""}${chosen ? " selected" : ""}`,
+        title: `${t.path}${shown ? " (shown side by side)" : ""}${chosen ? " · chosen: right-click to make a print project of the chosen tabs" : " · Ctrl+click to choose several tabs"}`,
+      });
       item.setAttribute("role", "tab");
       item.setAttribute("aria-selected", String(t === tab));
       const close = el("button", { className: "tab-close", textContent: "×", title: "Close tab (Ctrl+W)" });
@@ -1497,7 +1714,21 @@ export class App {
         this.closeTab(t);
       });
       item.append(el("span", { className: "tab-title", textContent: t.title }), close);
-      item.addEventListener("click", () => void this.activate(t));
+      item.addEventListener("click", (e) => {
+        if (e.ctrlKey || e.metaKey) {
+          // The active tab counts as chosen when the first other tab is added.
+          if (!this.selected.size && this.active && this.active !== t) this.selected.add(this.active);
+          if (this.selected.has(t)) this.selected.delete(t);
+          else this.selected.add(t);
+          this.renderTabbar();
+          return;
+        }
+        if (this.selected.size) {
+          this.selected.clear();
+          this.renderTabbar();
+        }
+        void this.activate(t);
+      });
       item.addEventListener("auxclick", (e) => {
         if (e.button === 1) this.closeTab(t);
       });
@@ -1507,7 +1738,7 @@ export class App {
         void this.showTabMenu(t, e.clientX, e.clientY);
       });
       item.addEventListener("pointerdown", (e) => {
-        if (e.button === 0 && !(e.target as Element).closest(".tab-close")) this.startTabDrag(t, item, e);
+        if (e.button === 0 && !e.ctrlKey && !e.metaKey && !(e.target as Element).closest(".tab-close")) this.startTabDrag(t, item, e);
       });
       return item;
     });
@@ -1637,7 +1868,7 @@ export class App {
     // The width ruler of a Markdown view was dragged.
     window.addEventListener("mdz-widths", (e) => {
       this.config = { ...this.config, widths: { ...(e as CustomEvent<{ text: number; objects: number }>).detail } };
-      void backend.saveState("config", this.config);
+      void this.persistConfig();
     });
   }
 

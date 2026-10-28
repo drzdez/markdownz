@@ -85,6 +85,16 @@
         "contentTypes": [
           "com.adobe.pdf"
         ]
+      },
+      {
+        "ext": [
+          "mdzprint"
+        ],
+        "name": "Markdownz print project",
+        "description": "Markdownz print project",
+        "role": "Viewer",
+        "rank": "Owner",
+        "mimeType": "application/x-markdownz-print"
       }
     ],
     "linux": {

@@ -439,6 +439,102 @@ fn save_state(app: AppHandle, name: String, data: String) -> Result<(), String> 
     std::fs::rename(&tmp, &file).map_err(|e| e.to_string())
 }
 
+/// Directory of the view settings of documents (one readable JSON file per document).
+fn views_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_config_dir().map_err(|e| e.to_string())?.join("views");
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+fn view_file(app: &AppHandle, name: &str) -> Result<PathBuf, String> {
+    let valid = name.ends_with(".json")
+        && name.len() <= 200
+        && !name.starts_with('.')
+        && name.chars().all(|c| c.is_alphanumeric() || matches!(c, '-' | '_' | '.' | ' '));
+    if !valid {
+        return Err(format!("invalid view settings name {name:?}"));
+    }
+    Ok(views_dir(app)?.join(name))
+}
+
+/// Contents of all view settings files.
+#[tauri::command]
+fn view_list(app: AppHandle) -> Result<Vec<String>, String> {
+    let dir = views_dir(&app)?;
+    let mut out = Vec::new();
+    for entry in std::fs::read_dir(&dir).map_err(|e| e.to_string())?.flatten() {
+        let path = entry.path();
+        if path.extension().is_some_and(|e| e == "json") {
+            if let Ok(data) = std::fs::read_to_string(&path) {
+                out.push(data);
+            }
+        }
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+fn view_save(app: AppHandle, name: String, data: String) -> Result<(), String> {
+    let file = view_file(&app, &name)?;
+    let tmp = file.with_extension("json.tmp");
+    std::fs::write(&tmp, data).map_err(|e| e.to_string())?;
+    std::fs::rename(&tmp, &file).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn view_remove(app: AppHandle, name: String) -> Result<(), String> {
+    let file = view_file(&app, &name)?;
+    match std::fs::remove_file(file) {
+        Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(e.to_string()),
+        _ => Ok(()),
+    }
+}
+
+/// Opens the folder of the view settings in the file manager.
+#[tauri::command]
+fn views_folder(app: AppHandle) -> Result<String, String> {
+    Ok(views_dir(&app)?.to_string_lossy().into_owned())
+}
+
+/// Size and a hash of the content (FNV-1a over the first and last MiB), to find
+/// the view settings of a file that was moved or renamed.
+#[tauri::command]
+fn file_fingerprint(path: String) -> Result<String, String> {
+    use std::io::{Read, Seek, SeekFrom};
+    const PART: u64 = 1 << 20;
+    let mut file = std::fs::File::open(&path).map_err(|e| format!("{path}: {e}"))?;
+    let size = file.metadata().map_err(|e| e.to_string())?.len();
+    let mut hash: u64 = 0xcbf29ce484222325;
+    let mut feed = |bytes: &[u8]| {
+        for b in bytes {
+            hash ^= u64::from(*b);
+            hash = hash.wrapping_mul(0x100000001b3);
+        }
+    };
+    let mut buf = Vec::new();
+    (&mut file).take(PART).read_to_end(&mut buf).map_err(|e| e.to_string())?;
+    feed(&buf);
+    if size > 2 * PART {
+        file.seek(SeekFrom::End(-(PART as i64))).map_err(|e| e.to_string())?;
+        buf.clear();
+        file.read_to_end(&mut buf).map_err(|e| e.to_string())?;
+        feed(&buf);
+    }
+    Ok(format!("{size}:{hash:016x}"))
+}
+
+/// Writes a print project file (only `.mdzprint`; created when missing).
+#[tauri::command]
+fn write_project(path: String, content: String) -> Result<(), String> {
+    let target = PathBuf::from(&path);
+    if !target.extension().is_some_and(|e| e.eq_ignore_ascii_case("mdzprint")) {
+        return Err(format!("{path}: not a print project (.mdzprint)"));
+    }
+    let tmp = target.with_extension("mdzprint.tmp");
+    std::fs::write(&tmp, content).map_err(|e| format!("{path}: {e}"))?;
+    std::fs::rename(&tmp, &target).map_err(|e| format!("{path}: {e}"))
+}
+
 #[tauri::command]
 fn take_startup_files(state: State<'_, Mutex<Pending>>) -> Vec<String> {
     let mut pending = state.lock().unwrap();
@@ -554,6 +650,12 @@ pub fn run() {
             watch_docs,
             load_state,
             save_state,
+            view_list,
+            view_save,
+            view_remove,
+            views_folder,
+            file_fingerprint,
+            write_project,
             take_startup_files,
             print_page,
             plugins::plugin_index,

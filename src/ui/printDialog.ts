@@ -10,6 +10,7 @@ import {
   passes,
   sheetCount,
   sheetGeometry,
+  startOnNewSheets,
   type AlignH,
   type AlignV,
   type Duplex,
@@ -35,6 +36,17 @@ const MAX_PREVIEW = 12;
  */
 let lastPages: PrintPages | null = null;
 
+/** The tab of the dialog shown last; the next dialog opens it again. */
+let lastSection = "general";
+
+/** Settings on each tab of the dialog; a tab with any of them changed from the defaults is marked. */
+const SECTION_KEYS: Record<string, (keyof PrintOptions)[]> = {
+  general: ["layout", "orientation", "duplex", "paper", "range"],
+  placement: ["scaleMode", "scaleValue", "alignH", "alignV", "margin", "gutterMargin", "border", "marginFrame"],
+  text: ["fontPt", "wideTables", "minFontPt", "overflow", "repeatHeaders"],
+  excel: ["sheetArea"],
+};
+
 const LAYOUTS: [Layout, string][] = [
   ["1", "1 page per sheet"],
   ["2", "2 pages per sheet"],
@@ -46,7 +58,12 @@ const LAYOUTS: [Layout, string][] = [
 type DuplexChoice = "none" | "printer" | "manual";
 const toChoice = (d: Duplex): DuplexChoice => (d === "long" || d === "short" ? "printer" : d);
 
-export function openPrintDialog(view: DocumentView, title: string, initial: PrintOptions, save: (options: PrintOptions) => void): void {
+export interface PrintDialogExtras {
+  /** Adds the document to a print project (a menu at the button). */
+  addToProject?(anchor: HTMLElement): void;
+}
+
+export function openPrintDialog(view: DocumentView, title: string, initial: PrintOptions, save: (options: PrintOptions) => void, extras: PrintDialogExtras = {}): void {
   const options = { ...initial };
   let pages: PrintPages | null = null;
   let pagesKey = "";
@@ -283,17 +300,14 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
   const wideField = el("label", { className: "mdz-field" }, el("span", { textContent: "Wide tables" }), wideTables);
   const minFontField = el("label", { className: "mdz-field" }, el("span", { textContent: "Smallest table text pt" }), minFont);
   const overflowField = el("label", { className: "mdz-field" }, el("span", { textContent: "Still too wide" }), overflow);
-  const textFieldset = el(
-    "fieldset",
-    { className: "mdz-placement" },
-    el("legend", { textContent: "Text and tables" }),
+  const textFields = [
     el("label", { className: "mdz-field" }, el("span", { textContent: "Text size pt" }), fontSize),
     wideField,
+    el("p", { className: "mdz-hint", textContent: "A table wider than the text turns its page landscape, then shrinks down to the smallest table text." }),
     minFontField,
     overflowField,
     repeatLabel,
-    sheetField,
-  );
+  ];
 
   const summary = el("p", { className: "mdz-print-summary" });
   /** What decides the page orientation of a reflowing document (settings, markers, your exceptions). */
@@ -305,33 +319,87 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
   const preview = el("div", { className: "mdz-print-preview" });
 
   const field = (label: string, control: HTMLElement) => el("label", { className: "mdz-field" }, el("span", { textContent: label }), control);
+  // The important settings on the first tab, the details of each function on its own tab.
+  const sections: { id: string; label: string; body: HTMLElement[]; shown: boolean }[] = [
+    {
+      id: "general",
+      label: "General",
+      shown: true,
+      body: [
+        el("fieldset", {}, el("legend", { textContent: "Layout" }), ...radios),
+        field("Orientation", orientation),
+        field("Two-sided", duplex),
+        reverseLabel,
+        field("Paper", paper),
+        field("Pages", range),
+      ],
+    },
+    {
+      id: "placement",
+      label: "Placement",
+      shown: true,
+      body: [
+        field("Scale", scale),
+        field("Horizontal", alignH),
+        field("Vertical", alignV),
+        field("Margins mm", margin),
+        gutterLabel,
+        el("label", {}, border, " Frame around each page"),
+        el("label", {}, marginFrame, " Frame along the sheet margins"),
+      ],
+    },
+    { id: "text", label: "Text and tables", shown: !!view.reflows, body: textFields },
+    {
+      id: "excel",
+      label: "Excel",
+      shown: false,
+      body: [
+        sheetField,
+        el("p", { className: "mdz-hint", textContent: "Each sheet can have its own choice: click the tag above the sheet. Your choice wins over this setting." }),
+      ],
+    },
+  ];
+  const tabButtons = new Map<string, HTMLButtonElement>();
+  const panels = new Map<string, HTMLElement>();
+  for (const s of sections) {
+    const button = el("button", { className: "mdz-print-tab", textContent: s.label, type: "button" });
+    button.addEventListener("click", () => showSection(s.id));
+    button.hidden = !s.shown;
+    tabButtons.set(s.id, button);
+    panels.set(s.id, el("div", { className: "mdz-print-panel" }, ...s.body));
+  }
+  function showSection(id: string): void {
+    if (tabButtons.get(id)?.hidden) id = "general";
+    lastSection = id;
+    for (const [key, button] of tabButtons) button.classList.toggle("active", key === id);
+    for (const [key, panel] of panels) panel.hidden = key !== id;
+  }
+  /** A tab whose settings differ from the defaults gets a dot. */
+  function markSections(): void {
+    for (const [id, keys] of Object.entries(SECTION_KEYS)) {
+      // Two-sided by the printer counts once, whichever edge it flips on.
+      const value = (o: PrintOptions, k: keyof PrintOptions) => (k === "duplex" ? toChoice(o.duplex) : o[k]);
+      const changed = keys.some((k) => value(options, k) !== value(DEFAULT_PRINT_OPTIONS, k));
+      const button = tabButtons.get(id)!;
+      button.classList.toggle("changed", changed);
+      button.title = changed ? "Some settings here differ from the defaults" : "";
+    }
+  }
+  const addToProject = el("button", { className: "mdz-settings-button mdz-print-project", textContent: "Add to print project…", title: "Print this document together with others: add it to a print project" });
+  addToProject.hidden = !extras.addToProject;
+  addToProject.addEventListener("click", () => extras.addToProject?.(addToProject));
   const form = el(
     "div",
     { className: "mdz-print-form" },
-    el("fieldset", {}, el("legend", { textContent: "Layout" }), ...radios),
-    field("Orientation", orientation),
-    field("Two-sided", duplex),
-    reverseLabel,
-    field("Paper", paper),
-    field("Pages", range),
-    ...(view.reflows ? [textFieldset] : []),
-    el(
-      "fieldset",
-      { className: "mdz-placement" },
-      el("legend", { textContent: "Placement" }),
-      field("Scale", scale),
-      field("Horizontal", alignH),
-      field("Vertical", alignV),
-      field("Margins mm", margin),
-      gutterLabel,
-      el("label", {}, border, " Frame around each page"),
-      el("label", {}, marginFrame, " Frame along the sheet margins"),
-    ),
+    el("div", { className: "mdz-print-tabs", role: "tablist" }, ...tabButtons.values()),
+    ...panels.values(),
     summary,
     orientationNotes,
     hint,
+    addToProject,
     el("div", { className: "mdz-print-buttons" }, reset, el("span", { className: "spacer" }), cancel, printButton),
   );
+  showSection(lastSection);
 
   const layer = openModal(`Print – ${title}`, el("div", { className: "mdz-print" }, form, preview), { className: "print" });
   cancel.addEventListener("click", () => layer.close());
@@ -387,7 +455,9 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
       layout,
     );
     pages = lastPages = result;
-    sheetField.hidden = !result.sheets;
+    sheetField.hidden = false;
+    tabButtons.get("excel")!.hidden = !result.sheets;
+    if (!result.sheets && lastSection === "excel") showSection("general");
     pagesKey = key;
     return result;
   }
@@ -443,14 +513,18 @@ export function openPrintDialog(view: DocumentView, title: string, initial: Prin
     }
 
     const isLandscape = (i: number) => source.size(i).width > source.size(i).height;
-    const sides = impose(selection, options.layout);
+    // Documents of a print project may each start on a new sheet.
+    const starts = source.newSheets ? (source.documents ?? []).map((d) => d.first) : [];
+    const sides = impose(startOnNewSheets(selection, starts, options.layout, options.duplex), options.layout);
     orientSides(sides, options.layout, options.orientation, isLandscape).forEach((o, i) => (sides[i].orientation = o));
     if (options.duplex === "long" || options.duplex === "short") options.duplex = flipEdge(dominantOrientation(sides));
     save(options);
+    markSections();
 
     orientationNotes.replaceChildren(...(source.notes?.summary ?? []).map((line) => el("div", { textContent: line })));
     const sheets = sheetCount(sides.length, options.duplex);
-    summary.textContent = `${selection.length} of ${source.count} pages → ${sheets} ${sheets === 1 ? "sheet" : "sheets"} of paper`;
+    const documents = source.documents?.length ? ` from ${source.documents.length} ${source.documents.length === 1 ? "document" : "documents"}` : "";
+    summary.textContent = `${selection.length} of ${source.count} pages${documents} → ${sheets} ${sheets === 1 ? "sheet" : "sheets"} of paper`;
     describe(sides);
     renderPreview(sides, source);
     printButton.onclick = () => void run(sides, source);

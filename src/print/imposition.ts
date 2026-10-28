@@ -258,8 +258,29 @@ export function dominantOrientation(sides: Side[]): Orientation {
   return landscape * 2 > sides.length ? "landscape" : "portrait";
 }
 
-/** Distributes `pages` (in reading order) onto sheet sides. */
-export function impose(pages: number[], layout: Layout): Side[] {
+/**
+ * Pages of several documents printed as one: blanks are added so that each
+ * document (its first page in `starts`) begins on a new sheet, on its
+ * front side when printing two-sided. Booklets stay one continuous run.
+ */
+export function startOnNewSheets(pages: number[], starts: number[], layout: Layout, duplex: Duplex): (number | null)[] {
+  if (layout === "booklet" || !starts.length) return pages;
+  const unit = Number(layout) * (duplex === "none" ? 1 : 2);
+  // Which document a page belongs to; a page range may leave out the first pages of one.
+  const documentOf = (page: number) => starts.filter((s) => s <= page).length;
+  const out: (number | null)[] = [];
+  let previous = -1;
+  for (const page of pages) {
+    const doc = documentOf(page);
+    if (doc !== previous) while (out.length % unit) out.push(null);
+    previous = doc;
+    out.push(page);
+  }
+  return out;
+}
+
+/** Distributes `pages` (in reading order, null = blank) onto sheet sides. */
+export function impose(pages: (number | null)[], layout: Layout): Side[] {
   if (layout === "booklet") {
     // Pad to a multiple of 4; sheet s carries pages (n-1-2s, 2s) on the front and (2s+1, n-2-2s) on the back.
     const n = Math.ceil(pages.length / 4) * 4;

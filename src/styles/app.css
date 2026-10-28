@@ -715,7 +715,7 @@ button {
 
 .mdz-print {
   display: grid;
-  grid-template-columns: 270px 1fr;
+  grid-template-columns: 330px 1fr;
   gap: 16px;
   min-height: 0;
 }
@@ -1783,4 +1783,221 @@ kbd {
 
 .mdz-about .mdz-print-buttons {
   margin-top: 16px;
+}
+
+/* ------------------------------------------------------- crop windows (PDF) */
+
+.pdf-view .page .mdz-crop-frame {
+  position: absolute;
+  z-index: 3;
+  outline: 2px dashed var(--accent);
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+
+.pdf-view .page:has(> .mdz-crop-frame) {
+  overflow: hidden;
+}
+
+.pdf-view .page .mdz-crop-frame.drawing {
+  box-shadow: none;
+  background: rgba(9, 105, 218, 0.12);
+}
+
+.pdf-view.mdz-cropping .page {
+  cursor: crosshair;
+}
+
+.pdf-view.mdz-cropping .textLayer,
+.pdf-view.mdz-cropping .annotationLayer {
+  pointer-events: none;
+  user-select: none;
+}
+
+.pdf-crop-info {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  margin: 0 auto;
+  width: fit-content;
+  max-width: calc(100% - 32px);
+  padding: 4px 12px;
+  border-radius: 6px 6px 0 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-size: 12px;
+  box-shadow: 0 0 0 1px var(--border);
+}
+
+/* ------------------------------------------------------- print projects */
+
+.project-view > .project-body {
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 24px 32px 48px;
+}
+
+.project-hidden {
+  display: none;
+}
+
+.project-docs {
+  padding-left: 1.6em;
+}
+
+.project-doc {
+  margin: 0 0 8px;
+}
+
+.project-doc > * {
+  vertical-align: top;
+}
+
+.project-doc-text {
+  display: inline-block;
+  width: calc(100% - 230px);
+  min-width: 200px;
+  overflow-wrap: anywhere;
+}
+
+.project-doc-text .mdz-hint {
+  padding: 0;
+}
+
+.project-doc-buttons {
+  display: inline-flex;
+  gap: 4px;
+  float: right;
+}
+
+.project-doc-buttons .mdz-settings-button,
+.project-add .mdz-settings-button,
+.project-crop .mdz-settings-button {
+  color: var(--fg);
+  padding: 3px 10px;
+}
+
+.project-doc-buttons .mdz-settings-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.project-add {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0 20px;
+}
+
+.project-rules {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-rules .mdz-hint {
+  margin: 0;
+  padding: 0;
+}
+
+.project-crop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: 8px;
+}
+
+.project-crop input {
+  width: 72px;
+}
+
+.mdz-project-note {
+  box-sizing: border-box;
+  padding: 20mm;
+  background: #fff;
+  color: #1f2328;
+}
+
+/* Print dialog: the important settings first, details on tabs. */
+.mdz-print-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  border-bottom: 1px solid var(--border);
+}
+
+.mdz-print-tab {
+  position: relative;
+  padding: 5px 10px;
+  border: 1px solid transparent;
+  border-bottom: none;
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+}
+
+.mdz-print-tab:hover {
+  color: var(--fg);
+}
+
+.mdz-print-tab.active {
+  margin-bottom: -1px;
+  border-color: var(--border);
+  background: var(--bg);
+  color: var(--fg);
+  font-weight: 600;
+}
+
+.mdz-print-tab.changed::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.mdz-print-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 250px;
+}
+
+.mdz-print-panel[hidden] {
+  display: none;
+}
+
+.mdz-print-panel > label:not(.mdz-field) {
+  display: block;
+}
+
+.mdz-print-panel fieldset {
+  margin: 0;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.mdz-print-panel fieldset label {
+  display: block;
+  padding: 2px 0;
+}
+
+.mdz-print-buttons {
+  flex-wrap: wrap;
+}
+
+/* Tabs chosen with Ctrl+click, e.g. to make a print project of them. */
+.tab.selected {
+  box-shadow: inset 0 -2px 0 var(--accent);
+  background: var(--hover);
+}
+
+.mdz-print-project {
+  align-self: flex-start;
+  color: var(--fg);
 }

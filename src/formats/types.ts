@@ -5,8 +5,8 @@
 // table of contents, zoom) is shared; each open document gets its own
 // DocumentView created by the plugin that claims the file's extension.
 
-import type { Orientation, PageLayoutOptions } from "../print/imposition";
-import type { BlockAnchor, LocalException, MarkerValue } from "../print/orientation";
+import type { Orientation, PageLayoutOptions, PrintOptions } from "../print/imposition";
+import type { BlockAnchor, Crop, LocalException, MarkerValue } from "../print/orientation";
 import type { MarkAction } from "../ui/orientationMarks";
 import type { Config } from "../state";
 import type { SheetState } from "./sheets";
@@ -30,6 +30,22 @@ export interface ViewHost {
   sheetMenu?(sheet: SheetState, x: number, y: number): void;
   /** The column slider of an Excel sheet: columns `first`–`last` are to be shown. */
   sheetColumns?(sheet: SheetState, first: number, last: number): void;
+  /** The crop window of the pages (PDF) was drawn or removed; null removes it. */
+  crop?(crop: Crop | null): void;
+  /** What a print project needs from the app. */
+  project?: ProjectHost;
+}
+
+/** Callbacks of a print project to the app. */
+export interface ProjectHost {
+  /** Opens a document in a tab. */
+  open(path: string): void;
+  /** Lets the user choose documents to add. */
+  pick(): Promise<string[]>;
+  /** Documents open in tabs, for adding them. */
+  openDocuments(): string[];
+  /** Message for the user. */
+  notify(message: string): void;
 }
 
 export interface OutlineItem {
@@ -153,6 +169,10 @@ export interface PrintPages {
   sheets?: number;
   /** What part of each Excel sheet the pages show, for the tags of the page view. */
   sheetStates?: SheetState[];
+  /** Documents printed together (a print project): name, first page and number of pages of each. */
+  documents?: { name: string; first: number; count: number }[];
+  /** Each document of a print project starts on a new sheet. */
+  newSheets?: boolean;
   count: number;
   /** Page size in millimetres. */
   size(index: number): { width: number; height: number };
@@ -183,6 +203,13 @@ export interface DocumentView {
   printPages?(paper: { width: number; height: number }, onProgress?: (done: number, total: number) => void, layout?: PageLayoutOptions): Promise<PrintPages>;
   /** The content is laid out for the paper (Markdown), unlike fixed pages (PDF). */
   readonly reflows?: boolean;
+  /** Print settings of its own (a print project), used instead of the common ones. */
+  printSettings?(): Partial<PrintOptions> | undefined;
+  setPrintSettings?(options: PrintOptions): void;
+  /** Documents its pages are made of (a print project): their settings change its pages too. */
+  sources?(): string[];
+  /** A crop window replacing the document's own (set by a print project); null = no crop. */
+  cropOverride?: Crop | null;
   dispose(): void;
 }
 

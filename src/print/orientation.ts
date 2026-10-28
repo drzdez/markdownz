@@ -182,11 +182,58 @@ export interface LocalException {
   label: string;
 }
 
-/** Exceptions of one document, keyed by its full path in the config. */
+/**
+ * A window cut out of every page of a document with fixed pages (PDF): the same
+ * place on each page, as fractions of the page (0–1 from the top left corner).
+ */
+export interface Crop {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/** A crop inside the page, at least 1 % of it each way; null when it is not one. */
+export function validCrop(crop: Partial<Crop> | null | undefined): Crop | null {
+  if (!crop) return null;
+  const { x, y, width, height } = crop;
+  if (![x, y, width, height].every((v) => typeof v === "number" && Number.isFinite(v))) return null;
+  const left = Math.min(Math.max(x!, 0), 1);
+  const top = Math.min(Math.max(y!, 0), 1);
+  const right = Math.min(Math.max(x! + width!, 0), 1);
+  const bottom = Math.min(Math.max(y! + height!, 0), 1);
+  if (right - left < 0.01 || bottom - top < 0.01) return null;
+  const round = (v: number) => Math.round(v * 10000) / 10000;
+  return { x: round(left), y: round(top), width: round(right - left), height: round(bottom - top) };
+}
+
+/** "left 10 %, top 5 %, 80 × 40 % of the page". */
+export function cropText(crop: Crop): string {
+  const pct = (v: number) => `${Math.round(v * 1000) / 10}`;
+  return `left ${pct(crop.x)} %, top ${pct(crop.y)} %, ${pct(crop.width)} × ${pct(crop.height)} % of the page`;
+}
+
+/** Your view settings of one document, keyed by its full path (see viewStore.ts). */
 export interface DocExceptions {
   /** Last time the document was opened (ms since epoch); old entries are removed. */
   used: number;
   items: LocalException[];
+  /** The window printed of every page (PDF). */
+  crop?: Crop;
+}
+
+/** Nothing set for the document. */
+export function emptyDoc(doc: DocExceptions | undefined): boolean {
+  return !doc || (!doc.items.length && !doc.crop);
+}
+
+/**
+ * The document with new exceptions, its other settings (crop) kept; undefined
+ * when nothing is left, so the caller removes the entry.
+ */
+export function withItems(doc: DocExceptions | undefined, items: LocalException[], now = Date.now()): DocExceptions | undefined {
+  const next: DocExceptions = { ...doc, used: now, items };
+  return emptyDoc(next) ? undefined : next;
 }
 
 export const EXCEPTION_DAYS = 180;
@@ -196,7 +243,7 @@ export const MAX_EXCEPTION_DOCS = 500;
 export function pruneExceptions(all: Record<string, DocExceptions>, now: number): Record<string, DocExceptions> {
   const limit = now - EXCEPTION_DAYS * 24 * 3600 * 1000;
   const kept = Object.entries(all)
-    .filter(([, doc]) => doc.used >= limit && doc.items.length)
+    .filter(([, doc]) => doc.used >= limit && !emptyDoc(doc))
     .sort((a, b) => b[1].used - a[1].used)
     .slice(0, MAX_EXCEPTION_DOCS);
   return Object.fromEntries(kept);

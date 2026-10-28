@@ -5,7 +5,7 @@
 import type { DocumentView, OrientationTarget, PrintPages } from "../formats/types";
 import type { LocalException } from "../print/orientation";
 import { bracketElement, hasMarks, labelElement, LabelRows, markSpecs, onGhostChange, pageTag, type MarkAction } from "./orientationMarks";
-import { impose, orientSides, pageSetup, sheetGeometry, type PrintOptions, type SheetGeometry, type Side } from "../print/imposition";
+import { impose, orientSides, pageSetup, sheetGeometry, startOnNewSheets, type PrintOptions, type SheetGeometry, type Side } from "../print/imposition";
 import { buildSheet } from "../print/printJob";
 import { el } from "./overlay";
 import { columnsCut, sheetTag, type SheetState } from "../formats/sheets";
@@ -118,7 +118,8 @@ export class PageView {
     this.pages = pages;
     this.options = { ...options };
     const isLandscape = (i: number) => pages.size(i).width > pages.size(i).height;
-    const sides = impose([...Array(pages.count).keys()], options.layout);
+    const starts = pages.newSheets ? (pages.documents ?? []).map((d) => d.first) : [];
+    const sides = impose(startOnNewSheets([...Array(pages.count).keys()], starts, options.layout, options.duplex), options.layout);
     orientSides(sides, options.layout, options.orientation, isLandscape).forEach((o, i) => (sides[i].orientation = o));
     this.sheets = sides.map((side, i) => {
       const geo = sheetGeometry(options.layout, options.paper, side.orientation ?? "portrait");
@@ -347,13 +348,20 @@ export class PageView {
   }
 }
 
+/** "page 3", or "report.pdf p. 2" for a document of a print project. */
+function pageName(source: PrintPages, n: number): string {
+  const doc = source.documents?.find((d) => n >= d.first && n < d.first + d.count);
+  return doc ? `${doc.name} p. ${n - doc.first + 1}` : `page ${n + 1}`;
+}
+
 function caption(side: Side, index: number, options: PrintOptions, source: PrintPages): string {
   const shown = side.slots.filter((s): s is number => s !== null);
   const pages = shown.map((n) => n + 1);
-  const what = pages.length === 0 ? "blank" : pages.length === 1 ? `page ${pages[0]}` : `pages ${pages.join(", ")}`;
+  const what = pages.length === 0 ? "blank" : source.documents ? shown.map((n) => pageName(source, n)).join(", ") : pages.length === 1 ? `page ${pages[0]}` : `pages ${pages.join(", ")}`;
   // Why a page is turned (or kept) when it is not simply following the paper.
   const notes = shown.map((n) => [n + 1, source.notes?.page(n) ?? ""] as const).filter(([, note]) => note);
   const why = notes.length ? ` · ${notes.map(([n, note]) => (shown.length > 1 ? `p. ${n} ${note}` : note)).join("; ")}` : "";
   if (options.layout === "booklet" || options.duplex !== "none") return `Sheet ${Math.floor(index / 2) + 1}, ${index % 2 ? "back" : "front"} · ${what}${why}`;
-  return options.layout === "1" ? `Page ${pages[0]}${why}` : `Sheet ${index + 1} · ${what}${why}`;
+  if (options.layout === "1") return pages.length ? `${source.documents ? what : `Page ${pages[0]}`}${why}` : "Blank";
+  return `Sheet ${index + 1} · ${what}${why}`;
 }

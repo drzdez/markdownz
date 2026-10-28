@@ -257,3 +257,44 @@ export function onCloseRequested(cb: () => Promise<void>): void {
   if (inTauri) void getCurrentWindow().onCloseRequested(cb);
   else window.addEventListener("beforeunload", () => void cb());
 }
+
+/** Contents of all view settings files (one per document, see viewStore.ts). */
+export async function viewList(): Promise<string[]> {
+  if (inTauri) return invoke<string[]>("view_list");
+  return Object.keys(localStorage)
+    .filter((k) => k.startsWith("mdz.views/"))
+    .map((k) => localStorage.getItem(k) ?? "");
+}
+
+export async function viewSave(name: string, data: string): Promise<void> {
+  if (inTauri) await invoke("view_save", { name, data });
+  else localStorage.setItem(`mdz.views/${name}`, data);
+}
+
+export async function viewRemove(name: string): Promise<void> {
+  if (inTauri) await invoke("view_remove", { name });
+  else localStorage.removeItem(`mdz.views/${name}`);
+}
+
+/** Folder of the view settings files. */
+export async function viewsFolder(): Promise<string> {
+  return inTauri ? invoke<string>("views_folder") : "";
+}
+
+/** Size and content hash of a file, to recognize it after a move or rename. */
+export async function fileFingerprint(path: string): Promise<string> {
+  return inTauri ? invoke<string>("file_fingerprint", { path }) : "";
+}
+
+/** Writes a print project file (.mdzprint). */
+export async function writeProject(path: string, content: string): Promise<void> {
+  if (inTauri) await invoke("write_project", { path, content });
+  else localStorage.setItem(`mdz.project/${path}`, content);
+}
+
+/** Asks where to save a new file; null when cancelled. */
+export async function pickSaveFile(defaultPath: string, filters: { name: string; extensions: string[] }[]): Promise<string | null> {
+  if (!inTauri) return null;
+  const { save } = await import("@tauri-apps/plugin-dialog");
+  return save({ defaultPath, filters });
+}

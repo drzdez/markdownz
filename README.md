@@ -76,7 +76,7 @@ On macOS use <kbd>⌘</kbd> instead of <kbd>Ctrl</kbd>. Press <kbd>F1</kbd> in t
 
 ## Printing
 
-<kbd>Ctrl</kbd>+<kbd>P</kbd> or the ⎙ button opens Markdownz's print dialog with a live preview of every sheet. Markdownz lays out the sheets itself and then hands them to the system print dialog, so the result is the same on every platform:
+<kbd>Ctrl</kbd>+<kbd>P</kbd> or the ⎙ button opens Markdownz's print dialog with a live preview of every sheet. Markdownz lays out the sheets itself and then hands them to the system print dialog, so the result is the same on every platform. The first tab, *General*, has what matters most (pages per sheet, orientation, two-sided, paper, pages); *Placement*, *Text and tables* and *Excel* hold the details, and a dot marks a tab with settings changed from the defaults:
 
 | Option | What happens |
 |---|---|
@@ -105,7 +105,7 @@ All of them apply to the whole document; single pages can be turned by exception
 
 **Turning single pages.** Exceptions belong to a block of content (a table, a paragraph), never to a page number, because pages move whenever the text or the settings change. Highest priority first:
 
-1. **Your exception** on this computer: right-click a block (continuous view) or a page (page view) → *Landscape page* / *Portrait page* / *Automatic*. Stored in Markdownz's config for the document's full path, so it also works for read-only files. It is tied to the block by the nearest heading and a hash of the block's beginning: edits elsewhere keep it, and when the block itself changes the page view says so and offers to remove it. An Excel sheet is tied to its name instead, so editing its cells keeps your exception. Exceptions of documents not opened for 180 days are dropped.
+1. **Your exception** on this computer: right-click a block (continuous view) or a page (page view) → *Landscape page* / *Portrait page* / *Automatic*. Stored on this computer for the document's full path (see *Your view settings* below), so it also works for read-only files. It is tied to the block by the nearest heading and a hash of the block's beginning: edits elsewhere keep it, and when the block itself changes the page view says so and offers to remove it. An Excel sheet is tied to its name instead, so editing its cells keeps your exception. Exceptions of documents not opened for 180 days are dropped.
 2. **A marker in the file**, an HTML comment on a line of its own (invisible on GitHub and in other viewers): `<!-- markdownz: landscape -->` or `<!-- markdownz: portrait -->` for the next block, `<!-- markdownz: landscape start -->` … `<!-- markdownz: landscape end -->` for a range, `<!-- markdownz: page break -->`. The page menu can copy a marker to paste in an editor. Markers exist only in Markdown files; CSV, code and notebooks use your exceptions. An Excel sheet set to *Landscape* in Excel's page setup counts like a marker (Excel stores *Portrait* whether or not anybody chose it, so only landscape counts).
 3. **The print settings** (*Wide tables*). Whatever turns a page, a table still too wide for it shrinks down to the smallest table text and then continues below or is cut off, as set.
 
@@ -124,6 +124,24 @@ All of them apply to the whole document; single pages can be turned by exception
 A label removed by a click (✕, or ⟳ back to automatic) stays a few seconds, fading, with ↺ to bring it back. For read-only files markers cannot be changed; use your exception instead.
 
 A portrait exception keeps the block on a portrait page (wide content shrinks). When every page is landscape (*Orientation: Landscape*, one page per sheet) portrait exceptions are ignored, and the page view says so. The page view shows above the pages what is in effect, including anything overruled or ignored, and every page caption says why the page is turned; the print dialog shows the same summary. PDF pages keep their own orientation.
+
+### Crop windows of PDF pages
+
+Right-click a PDF → *Draw a crop window…* and drag a rectangle on any page: the same window of every page is printed, each as a page of its own, so with *4 pages per sheet* four windows share a sheet. The pages in the continuous view show the window with a dashed frame, and a bar at the bottom says that only the window is printed. *Remove the crop window* prints whole pages again. The window is kept on this computer for the document, never in the PDF.
+
+### Print projects
+
+A print project (`.mdzprint`) prints several documents one after another as one job: Markdown, PDF, Excel, Word, pictures, in any mix. Right-click a tab → *Add to print project…* offers the open print projects (it asks before adding), a new one, the recent ones or another file; Ctrl+click tabs to choose several, then *Add N tabs to a print project…* or *New print project from N tabs…*. The print dialog has the same *Add to print project…* button, and *+ → New print project…* creates one with the documents shown side by side (or the active one); in the project, *Add documents…* and *Add an open document* add more, ↑ ↓ change the order, ✕ removes one, *Open* opens it in a tab. Nothing of the documents changes: each keeps its page breaks, orientation, parts of Excel sheets and crop window, set in the document itself. The project adds only its common print rules:
+
+- its own print settings (paper, pages per sheet, two-sided, …), saved in the project once it is printed;
+- *Each document starts on a new sheet* (on its front side when printing two-sided), so one document can fill one sheet with 4 pages and the next one starts on the next sheet;
+- *Crop window of PDF pages*: each document's own, none, or one window for all PDF documents, which takes priority over the windows drawn in the documents (*Take from a document* copies one).
+
+The project file is readable JSON with the documents' paths relative to it, so the folder can be moved as a whole. The page view captions name the document and its page, e.g. *report.pdf p. 2*.
+
+### Your view settings
+
+Your exceptions, page breaks, parts of Excel sheets and crop windows are kept on this computer, one readable JSON file per document in the folder `views` of Markdownz's config directory (▥ menu → *Folder of your view settings*), named after the document and a hash of its path. Each file names the document's path and a fingerprint of its content (size and hash): when a document with settings is moved or renamed, opening it at its new place brings the settings along. Settings of documents not opened for 180 days are removed. Versions up to 0.4.14 kept them in `config.json`; they are moved into the folder on the first start.
 
 Markdown documents are split into pages between paragraphs, list items, table rows and code lines, never right after a heading. PDF pages are rendered at print resolution. The job sent to the printer always uses portrait paper and landscape sheets are rotated onto it, so portrait and landscape sheets can be mixed on every platform. In the system dialog keep the scale at 100 % / default.
 
