@@ -81,6 +81,13 @@
   </keywords>
 
   <releases>
+    <release version="0.5.0" date="2026-10-28">
+      <description>
+        <p>Print projects: several documents (Markdown, PDF, Excel, Word, pictures) printed one after another as one job. Each keeps its own page breaks, orientation and parts; the project adds its own print settings, each document on a new sheet, and a crop window for PDF pages. Right-click a tab to add it to a print project, or Ctrl+click several tabs to make one of them; the print dialog has the same button.</p>
+        <p>Crop windows of PDF pages: right-click a PDF and drag a rectangle on a page; the same window of every page is printed, each as a page.</p>
+        <p>Your view settings (exceptions, page breaks, parts of sheets, crop windows) are kept in one readable file per document and follow a document that was moved or renamed. The print dialog shows the important settings first and the details on tabs.</p>
+      </description>
+    </release>
     <release version="0.4.14" date="2026-10-16">
       <description>
         <p>In the page view the tags of Excel sheets sit beside the page where each sheet starts. The column slider hides itself when you leave it or scroll. Only what differs from the standard is highlighted: your choices for sheets and your orientation exceptions. Excel, Word and other converted formats can turn pages and start new pages too, as your exceptions on this computer, and the page menu has Page break above for every format.</p>
