@@ -81,6 +81,12 @@
   </keywords>
 
   <releases>
+    <release version="0.5.1" date="2026-11-16">
+      <description>
+        <p>Czech data box messages (.zfo): received and sent messages and delivery receipts open in a tab. The envelope (sender, recipient, subject, references, times, status) is a card at the top, every file of the message opens on one click, and a main text in HTML or plain text is shown right below. The data box signature is not checked yet.</p>
+        <p>E-mails from mailz: a message.md of the mailz view shows its headers as a card, and its attachments open on one click instead of their cards; harmful ones and ones waiting for the antivirus cannot be opened. It can be switched off in Settings.</p>
+      </description>
+    </release>
     <release version="0.5.0" date="2026-10-28">
       <description>
         <p>Print projects: several documents (Markdown, PDF, Excel, Word, pictures) printed one after another as one job. Each keeps its own page breaks, orientation and parts; the project adds its own print settings, each document on a new sheet, and a crop window for PDF pages. Right-click a tab to add it to a print project, or Ctrl+click several tabs to make one of them; the print dialog has the same button.</p>
