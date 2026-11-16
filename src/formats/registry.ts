@@ -5,10 +5,11 @@ import { imageFormat } from "./image";
 import { markdownFormat } from "./markdown";
 import { pdfFormat } from "./pdf";
 import { projectFormat } from "./project";
+import { zfoFormat } from "./zfo";
 import type { FormatPlugin } from "./types";
 
 /** All document formats in settings order: the built-in ones (add new ones here), then the installed plugins. */
-export const FORMATS: FormatPlugin[] = [markdownFormat, pdfFormat, imageFormat, textFormat, csvFormat, diagramFormat, notebookFormat, projectFormat];
+export const FORMATS: FormatPlugin[] = [markdownFormat, pdfFormat, imageFormat, textFormat, csvFormat, diagramFormat, notebookFormat, zfoFormat, projectFormat];
 
 /** Adds an installed plugin's format, or replaces it after an update. */
 export function registerFormat(format: FormatPlugin): void {

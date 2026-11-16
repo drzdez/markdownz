@@ -14,6 +14,7 @@ import {
   taskListPlugin,
 } from "./plugins/basic";
 import { graphvizPlugin, mermaidPlugin } from "./plugins/diagrams";
+import { mailPlugin } from "./plugins/mail";
 import { mathPlugin } from "./plugins/math";
 import type { RenderContext, ViewerPlugin } from "./types";
 
@@ -24,6 +25,7 @@ export const PLUGINS: ViewerPlugin[] = [
   footnotePlugin,
   emojiPlugin,
   frontMatterPlugin,
+  mailPlugin,
   highlightPlugin,
   mathPlugin,
   mermaidPlugin,

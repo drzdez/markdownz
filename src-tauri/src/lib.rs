@@ -535,6 +535,51 @@ fn write_project(path: String, content: String) -> Result<(), String> {
     std::fs::rename(&tmp, &target).map_err(|e| format!("{path}: {e}"))
 }
 
+/// A file name safe on every system: no folders, no reserved characters or names.
+fn safe_file_name(name: &str) -> String {
+    let base = name.rsplit(['/', '\\']).next().unwrap_or("");
+    let mut out: String = base
+        .chars()
+        .map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) { '_' } else { c })
+        .collect();
+    out = out.trim_matches(|c: char| c == '.' || c == ' ').to_string();
+    if out.chars().count() > 150 {
+        let ext = Path::new(&out).extension().and_then(|e| e.to_str()).filter(|e| e.len() <= 10).map(|e| format!(".{e}")).unwrap_or_default();
+        out = out.chars().take(150 - ext.chars().count()).collect::<String>() + &ext;
+    }
+    let stem = out.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let reserved = ["CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9"];
+    if out.is_empty() {
+        out = "attachment".into();
+    } else if reserved.contains(&stem.as_str()) {
+        out = format!("_{out}");
+    }
+    out
+}
+
+/// Writes a file of a document (an attachment of a data box message, base64)
+/// into `<temp>/Markdownz/attachments/<key>/` and returns its path. `key`
+/// (a hash of the document's path) keeps files of different documents apart.
+#[tauri::command]
+fn extract_attachment(key: String, name: String, data: String) -> Result<String, String> {
+    use base64::Engine;
+    if key.is_empty() || key.len() > 32 || !key.chars().all(|c| c.is_ascii_hexdigit()) {
+        return Err("bad key".into());
+    }
+    let clean: String = data.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+    let bytes = base64::engine::general_purpose::STANDARD.decode(clean).map_err(|e| format!("{name}: {e}"))?;
+    let dir = std::env::temp_dir().join("Markdownz").join("attachments").join(&key);
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let target = dir.join(safe_file_name(&name));
+    let same = std::fs::read(&target).is_ok_and(|old| old == bytes);
+    if !same {
+        let tmp = target.with_extension("mdz-part");
+        std::fs::write(&tmp, &bytes).map_err(|e| format!("{name}: {e}"))?;
+        std::fs::rename(&tmp, &target).map_err(|e| format!("{name}: {e}"))?;
+    }
+    Ok(target.to_string_lossy().into_owned())
+}
+
 #[tauri::command]
 fn take_startup_files(state: State<'_, Mutex<Pending>>) -> Vec<String> {
     let mut pending = state.lock().unwrap();
@@ -656,6 +701,7 @@ pub fn run() {
             views_folder,
             file_fingerprint,
             write_project,
+            extract_attachment,
             take_startup_files,
             print_page,
             plugins::plugin_index,

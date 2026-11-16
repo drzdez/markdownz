@@ -34,6 +34,8 @@ export interface ViewHost {
   crop?(crop: Crop | null): void;
   /** What a print project needs from the app. */
   project?: ProjectHost;
+  /** A message for the user (e.g. a file of a data box message cannot be opened). */
+  notify?(message: string): void;
 }
 
 /** Callbacks of a print project to the app. */

@@ -95,6 +95,16 @@
         "role": "Viewer",
         "rank": "Owner",
         "mimeType": "application/x-markdownz-print"
+      },
+      {
+        "ext": [
+          "zfo"
+        ],
+        "name": "Data box message",
+        "description": "Data box message",
+        "role": "Viewer",
+        "rank": "Alternate",
+        "mimeType": "application/vnd.software602.filler.form-xml-zip"
       }
     ],
     "linux": {

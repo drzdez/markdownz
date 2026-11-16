@@ -1041,6 +1041,124 @@ img.mdz-wide {
   font-size: 0.9em;
 }
 
+/* E-mails (mailz) and data box messages (.zfo): headers as a card, files as chips. */
+.markdown-body .mdz-mail-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px;
+  margin: 0 0 12px;
+  background: var(--chrome);
+}
+.markdown-body .mdz-mail-kind {
+  margin: 0 0 6px;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.markdown-body table.mdz-mail-head {
+  display: table;
+  width: 100%;
+  margin: 0;
+  border: 0;
+  font-size: 0.95em;
+}
+.markdown-body table.mdz-mail-head tr,
+.markdown-body table.mdz-mail-head tr:nth-child(2n) {
+  background: transparent;
+  border: 0;
+}
+.markdown-body table.mdz-mail-head th,
+.markdown-body table.mdz-mail-head td {
+  border: 0;
+  padding: 2px 12px 2px 0;
+  text-align: left;
+  vertical-align: top;
+}
+.markdown-body table.mdz-mail-head th {
+  width: 1%;
+  white-space: nowrap;
+  color: var(--muted);
+  font-weight: 500;
+}
+.markdown-body .mdz-mail-note {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.markdown-body .mdz-mail-warning {
+  margin: 8px 0 0;
+  color: #cf222e;
+  font-weight: 600;
+}
+:root[data-theme="dark"] .markdown-body .mdz-mail-warning {
+  color: #ff7b72;
+}
+.markdown-body .mdz-mail-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 16px;
+}
+.markdown-body .mdz-mail-files-head {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85em;
+}
+.markdown-body .mdz-mail-file-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+.markdown-body a.mdz-mail-file {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  max-width: 100%;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--fg);
+  text-decoration: none;
+  cursor: pointer;
+}
+.markdown-body a.mdz-mail-file:hover {
+  border-color: var(--accent);
+  background: var(--hover);
+}
+.markdown-body .mdz-mail-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.markdown-body .mdz-mail-file-size {
+  color: var(--muted);
+  font-size: 0.85em;
+  white-space: nowrap;
+}
+.markdown-body a.mdz-mail-file-threat,
+.markdown-body a.mdz-mail-file-pending {
+  cursor: default;
+  opacity: 0.7;
+}
+.markdown-body a.mdz-mail-file-threat {
+  border-color: #cf222e;
+  text-decoration: line-through;
+}
+.markdown-body a.mdz-mail-file-card {
+  color: var(--muted);
+  text-decoration: none;
+  padding: 0 4px;
+}
+.markdown-body .mdz-mail-body {
+  margin: 0 0 16px;
+}
+.markdown-body pre.mdz-mail-text {
+  white-space: pre-wrap;
+  font-family: inherit;
+  background: transparent;
+  padding: 0;
+}
+
 /* Excel sheets (xlsx plugin): cells keep the workbook's colours, so the sheet stays light in dark mode too.
    ":root" outweighs the GitHub styles scoped to paper (.mdz-paper), which would pad and stripe the cells. */
 :root .markdown-body table.mdz-excel {

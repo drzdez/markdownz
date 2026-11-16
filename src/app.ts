@@ -1281,6 +1281,7 @@ export class App {
       sheetMenu: (sheet: SheetState, x: number, y: number) => this.showSheetMenu(tab, sheet, x, y),
       sheetColumns: (sheet: SheetState, first: number, last: number) => this.setSheetChoice(tab.path, sheet, { ...sheet.choice, area: columnsChoice(sheet, first, last) }),
       crop: (crop: Crop | null) => this.setCrop(tab.path, crop),
+      notify: (message: string) => toast(message, "warning"),
       project: {
         open: (path: string) => void this.openFiles([path]),
         pick: () => backend.pickFiles(fileFilters(this.config)),

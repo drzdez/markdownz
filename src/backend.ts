@@ -286,6 +286,15 @@ export async function fileFingerprint(path: string): Promise<string> {
   return inTauri ? invoke<string>("file_fingerprint", { path }) : "";
 }
 
+/**
+ * Writes a file of a document (an attachment of a data box message, given in
+ * base64) into the app's temporary folder for it and returns its path; null
+ * outside the app.
+ */
+export async function extractAttachment(key: string, name: string, base64: string): Promise<string | null> {
+  return inTauri ? invoke<string>("extract_attachment", { key, name, data: base64 }) : null;
+}
+
 /** Writes a print project file (.mdzprint). */
 export async function writeProject(path: string, content: string): Promise<void> {
   if (inTauri) await invoke("write_project", { path, content });
