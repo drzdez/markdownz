@@ -17,6 +17,17 @@ export interface OpenWithApp {
 }
 
 /** User preferences, stored as `config.json` in the app config directory. */
+/** Default and limits of the double Tab gap in ms. */
+export const DOUBLE_TAB_MS = 300;
+export const DOUBLE_TAB_RANGE = [120, 800] as const;
+
+/** The double Tab gap of the settings, within its limits. */
+export function doubleTabMs(config: Pick<Config, "doubleTabMs">): number {
+  const ms = Number(config.doubleTabMs);
+  if (!Number.isFinite(ms)) return DOUBLE_TAB_MS;
+  return Math.min(DOUBLE_TAB_RANGE[1], Math.max(DOUBLE_TAB_RANGE[0], Math.round(ms)));
+}
+
 export interface Config {
   theme: ThemeSetting;
   /** Markdown extension plugin id -> enabled. Missing ids fall back to the plugin default. */
@@ -39,6 +50,12 @@ export interface Config {
   /** Zoom a newly opened document starts with, continuous view and page view (1 = 100 %). */
   zoomContinuous?: number;
   zoomPages?: number;
+  /** Side of the table of contents (default left), how much detail it shows (0 or missing = everything, see detailSteps in ui/toc.ts), and its width in px. */
+  tocSide?: "left" | "right";
+  tocDetail?: number;
+  tocWidth?: number;
+  /** Longest gap between two Tab presses that still counts as a double Tab, in ms (default DOUBLE_TAB_MS). */
+  doubleTabMs?: number;
   /** Check for a new version once a day at start. */
   checkUpdates: boolean;
   /** Time of the last update check (ms since epoch). */

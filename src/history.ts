@@ -15,6 +15,8 @@ export interface HistoryNode {
   lastChild: number | null;
   scroll: number;
   title?: string;
+  /** A jump inside the document (a link to #fragment): the same document at another place. */
+  hash?: string;
 }
 
 export interface HistoryState {
@@ -75,6 +77,21 @@ export class HistoryTree {
     const from = this.current;
     const existing = this.childrenOf(from).find((c) => samePath(c.path, path));
     const target = existing ?? this.add(path, from.id);
+    from.lastChild = target.id;
+    this.currentId = target.id;
+    return target;
+  }
+
+  /**
+   * A jump to `#hash` inside the current document: a new place to go back from.
+   * Jumping again to the same place from here reuses that node.
+   */
+  jump(hash: string): HistoryNode {
+    const from = this.current;
+    const existing = this.childrenOf(from).find((c) => c.hash === hash && samePath(c.path, from.path));
+    const target = existing ?? this.add(from.path, from.id);
+    target.hash = hash;
+    target.title = from.title;
     from.lastChild = target.id;
     this.currentId = target.id;
     return target;

@@ -8,7 +8,7 @@ import { shouldCheck, shouldOffer } from "./update";
 import { showUpdateDialog } from "./ui/updateDialog";
 import { classifyLink } from "./links";
 import { basename, dirname, extname, samePath } from "./paths";
-import { DEFAULT_CONFIG, DEFAULT_SESSION, type Config, type Session } from "./state";
+import { DEFAULT_CONFIG, DEFAULT_SESSION, doubleTabMs, type Config, type Session } from "./state";
 import { dropIndex, indicesToClose, moveItem, type CloseScope } from "./tabops";
 import { showContextMenu, visibleKeys, type MenuItem } from "./ui/contextMenu";
 import { folderIcon } from "./ui/icons";
@@ -29,7 +29,7 @@ import { openPrintDialog } from "./ui/printDialog";
 import { Finder } from "./ui/find";
 import { el, openModal, topLayer } from "./ui/overlay";
 import { effectiveTheme, initTheme, setTheme } from "./ui/theme";
-import { Toc } from "./ui/toc";
+import { TOC_WIDTH, Toc } from "./ui/toc";
 
 const ZOOM_MIN = 0.3;
 const ZOOM_MAX = 4;
@@ -170,6 +170,10 @@ export class App {
     await plugins.loadInstalled().catch((e) => console.warn("cannot list the installed plugins", e));
     for (const format of FORMATS) format.configure?.(this.config);
     this.toc.visible = this.session.toc;
+    this.toc.options = { side: this.config.tocSide ?? "left", detail: this.config.tocDetail ?? 0, width: this.config.tocWidth ?? TOC_WIDTH };
+    this.toc.place();
+    this.toc.onOptionsChange = (o) => void this.updateConfig({ ...this.config, tocSide: o.side, tocDetail: o.detail, tocWidth: o.width });
+    this.toc.onToggle = () => this.toggleToc();
     this.bindEvents();
 
     for (const state of this.session.tabs) {
@@ -1405,7 +1409,7 @@ export class App {
     if (!tab.view) return;
     if (tab.paged) this.toc.build([], "The outline is available in the continuous view (Ctrl+Shift+P).");
     else {
-      this.toc.build(tab.view.outline());
+      this.toc.build(tab.view.outline({ lists: true }));
       this.toc.sync(tab.view);
     }
     this.finder.refresh();
@@ -1481,7 +1485,7 @@ export class App {
     try {
       switch (target.kind) {
         case "anchor":
-          tab.view?.scrollToFragment(target.id);
+          this.jumpInDocument(tab, target.id);
           break;
         case "external":
           await backend.openExternal(target.url);
@@ -1503,7 +1507,7 @@ export class App {
   private async navigate(tab: Tab, path: string, hash: string): Promise<void> {
     const canonical = await backend.resolvePath(path);
     if (samePath(canonical, tab.path)) {
-      if (hash) tab.view?.scrollToFragment(hash);
+      if (hash) this.jumpInDocument(tab, hash);
       return;
     }
     tab.saveScroll();
@@ -1511,12 +1515,139 @@ export class App {
     await this.renderTab(tab, hash ? { hash } : "top");
   }
 
+  /** The last Tab press: when and in which part of the window it started (two quick presses jump between the parts). */
+  private lastTab = { time: 0, zone: "none" as FocusZone };
+
+  /** Which part of the window has the keyboard focus. */
+  private focusZone(): FocusZone {
+    const e = document.activeElement as HTMLElement | null;
+    if (!e || e === document.body || e.classList.contains("doc-view") || e.classList.contains("pdf-view")) return "none";
+    if (e.closest("#tabbar")) return "bar";
+    if (e.closest(".mdz-orient-layer")) return "service";
+    if (e.closest("#docs")) return "doc";
+    return "other";
+  }
+
+  /** The controls of the document in the active tab that the keyboard can reach: its own (links, …) or the service ones (page break buttons). */
+  private documentControls(service: boolean): { view: HTMLElement | null; controls: HTMLElement[] } {
+    const view = (this.active?.paged ? this.active.pages?.element : this.active?.view?.element) ?? null;
+    if (!view) return { view, controls: [] };
+    const controls = reachable(view).filter((x) => !!x.closest(".mdz-orient-layer") === service);
+    return { view, controls };
+  }
+
+  /** The controls of one part of the window, in the order Tab goes through them. */
+  private zoneControls(zone: FocusZone): HTMLElement[] {
+    if (zone === "bar") return reachable(this.tabbar);
+    if (zone === "doc" || zone === "service") return this.documentControls(zone === "service").controls;
+    return [];
+  }
+
+  /** Tab inside one part of the window: on to the next control of that part, from the last one round to the first. */
+  private cycleIn(zone: FocusZone, back: boolean): boolean {
+    const list = this.zoneControls(zone);
+    if (!list.length) return false;
+    const current = document.activeElement as HTMLElement | null;
+    // A tab moved to with the arrows is not a Tab stop itself; it stands for the tabs.
+    let i = list.findIndex((x) => x === current || (current?.classList.contains("tab") && x.classList.contains("tab")));
+    if (i < 0) i = back ? 0 : -1;
+    list[(i + (back ? -1 : 1) + list.length) % list.length].focus();
+    return true;
+  }
+
+  /** The first link (or other control) of the document in the active tab, or the document itself. */
+  private focusDocument(): boolean {
+    const { view, controls } = this.documentControls(false);
+    if (!view) return false;
+    (controls[0] ?? view).focus();
+    return true;
+  }
+
+  /** The first service button of the document (page breaks of the print view); false when there is none. */
+  private focusService(): boolean {
+    const first = this.documentControls(true).controls[0];
+    first?.focus();
+    return !!first;
+  }
+
+  /** The first menu button of the bar (+, open), where the menus start. */
+  private focusMenu(): boolean {
+    const open = this.tabbar.querySelector<HTMLElement>(".open-button");
+    open?.focus();
+    return !!open;
+  }
+
+  /**
+   * Tab with the keyboard: with nothing focused Tab goes to the first link of
+   * the document and Shift+Tab to the first menu (+; Shift+Tab again reaches
+   * the tabs). Inside the document, the menus or the service marks of the
+   * document (page breaks), Tab goes round that part only. Two quick Tab
+   * presses jump to the next part: document → menus → service marks (when
+   * shown) → document. Returns whether the key was used here.
+   */
+  private keyboardTab(back: boolean): boolean {
+    const now = Date.now();
+    const zone = this.focusZone();
+    const quick = now - this.lastTab.time <= doubleTabMs(this.config);
+    const started = quick ? this.lastTab.zone : zone;
+    this.lastTab = { time: quick ? 0 : now, zone };
+    if (quick && !back) {
+      if (started === "doc") return this.focusMenu();
+      if (started === "bar") return this.focusService() || this.focusDocument();
+      if (started === "service") return this.focusDocument();
+    }
+    if (zone === "none") return back ? this.focusMenu() : this.focusDocument();
+    return this.cycleIn(zone, back);
+  }
+
+  /** F7: the ring around the link or button the keyboard is on (Tab, Enter) is shown or hidden; remembered on this computer. */
+  private toggleFocusRing(): void {
+    const off = document.documentElement.classList.toggle("mdz-focus-off");
+    try {
+      localStorage.setItem("mdz.focusRing", off ? "off" : "on");
+    } catch {
+      /* not remembered */
+    }
+    toast(off ? "Keyboard focus is not highlighted (F7 shows it)" : "Keyboard focus is highlighted (F7 hides it)");
+  }
+
+  /** A link to a place in the shown document: scrolls there and adds the place to the history, so Back returns. */
+  private jumpInDocument(tab: Tab, hash: string): void {
+    const view = tab.view;
+    if (!view) return;
+    tab.saveScroll();
+    if (!view.scrollToFragment(hash)) return;
+    const node = tab.history.jump(hash);
+    node.scroll = view.element.scrollTop;
+    tab.renderedNode = node.id;
+    this.renderTabbar();
+    this.scheduleSave();
+  }
+
+  /**
+   * Shows the current history node: only scrolls when it is the document already
+   * shown (a jump inside it), otherwise loads and renders the document.
+   */
+  private async showCurrent(tab: Tab): Promise<void> {
+    const node = tab.history.current;
+    const shown = tab.history.node(tab.renderedNode);
+    if (tab.view && tab.format && !tab.stale && shown && samePath(shown.path, node.path)) {
+      tab.renderedNode = node.id;
+      if (!tab.paged) tab.view.element.scrollTop = node.scroll;
+      if (tab === this.active) this.toc.sync(tab.view);
+      this.renderTabbar();
+      this.scheduleSave();
+      return;
+    }
+    await this.renderTab(tab, "restore");
+  }
+
   private async back(): Promise<void> {
     const tab = this.active;
     if (!tab?.history.canBack) return;
     tab.saveScroll();
     tab.history.back();
-    await this.renderTab(tab, "restore");
+    await this.showCurrent(tab);
   }
 
   private async forward(): Promise<void> {
@@ -1525,7 +1656,7 @@ export class App {
     const go = async (id: number) => {
       tab.saveScroll();
       tab.history.forward(id);
-      await this.renderTab(tab, "restore");
+      await this.showCurrent(tab);
     };
     const options = tab.history.forwardOptions();
     if (options.length === 1) await go(options[0].id);
@@ -1539,7 +1670,7 @@ export class App {
       if (node.id === tab.history.current.id) return;
       tab.saveScroll();
       tab.history.goto(node.id);
-      void this.renderTab(tab, "restore");
+      void this.showCurrent(tab);
     });
   }
 
@@ -1709,7 +1840,26 @@ export class App {
       });
       item.setAttribute("role", "tab");
       item.setAttribute("aria-selected", String(t === tab));
-      const close = el("button", { className: "tab-close", textContent: "×", title: "Close tab (Ctrl+W)" });
+      // One stop for all tabs (the active one); ← → move between them, Enter or Space shows one, Delete closes it.
+      item.tabIndex = t === tab ? 0 : -1;
+      item.addEventListener("keydown", (e) => {
+        if (e.ctrlKey || e.altKey || e.metaKey) return;
+        const all = [...this.tabbar.querySelectorAll<HTMLElement>(".tab")];
+        const i = all.indexOf(item);
+        if (e.key === "ArrowLeft" || e.key === "ArrowRight" || e.key === "Home" || e.key === "End") {
+          const next = e.key === "Home" ? 0 : e.key === "End" ? all.length - 1 : i + (e.key === "ArrowLeft" ? -1 : 1);
+          all[Math.max(0, Math.min(all.length - 1, next))]?.focus();
+        } else if (e.key === "Enter" || e.key === " ") {
+          this.tabFocusIndex = i;
+          void this.activate(t);
+        } else if (e.key === "Delete") {
+          this.tabFocusIndex = Math.max(0, i - (i === all.length - 1 ? 1 : 0));
+          this.closeTab(t);
+        } else return;
+        e.preventDefault();
+        e.stopPropagation();
+      });
+      const close = el("button", { className: "tab-close", textContent: "×", title: "Close tab (Ctrl+W)", tabIndex: -1 });
       close.addEventListener("click", (e) => {
         e.stopPropagation();
         this.closeTab(t);
@@ -1774,7 +1924,16 @@ export class App {
       button("?", "Help and release notes — F1", () => this.help()),
     );
     this.tabbar.querySelector(".tab.active")?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    // The keyboard stays on the tabs after Enter or Delete there.
+    if (this.tabFocusIndex !== null) {
+      const all = this.tabbar.querySelectorAll<HTMLElement>(".tab");
+      all[Math.min(this.tabFocusIndex, all.length - 1)]?.focus();
+      this.tabFocusIndex = null;
+    }
   }
+
+  /** Index of the tab to focus after the tab bar is drawn again (keyboard on the tabs), or null. */
+  private tabFocusIndex: number | null = null;
 
   private toggleToc(): void {
     this.toc.visible = !this.toc.visible;
@@ -1863,6 +2022,7 @@ export class App {
     if (import.meta.env.PROD) window.addEventListener("contextmenu", (e) => e.preventDefault());
 
     backend.onOpenFiles((paths) => void this.openFiles(paths));
+    App.restoreFocusRing();
     backend.onDropFiles((paths) => void this.openFiles(paths));
     backend.onDocChanged((path) => this.onDocChanged(path));
     backend.onCloseRequested(() => this.saveSession());
@@ -1871,6 +2031,15 @@ export class App {
       this.config = { ...this.config, widths: { ...(e as CustomEvent<{ text: number; objects: number }>).detail } };
       void this.persistConfig();
     });
+  }
+
+  /** The keyboard focus ring as chosen last time (F7). */
+  private static restoreFocusRing(): void {
+    try {
+      if (localStorage.getItem("mdz.focusRing") === "off") document.documentElement.classList.add("mdz-focus-off");
+    } catch {
+      /* shown */
+    }
   }
 
   private onKey(e: KeyboardEvent): void {
@@ -1923,7 +2092,12 @@ export class App {
       if (e.key === "ArrowLeft") void this.back();
       else if (e.key === "ArrowRight") void this.forward();
       else handled = false;
-    } else if (e.key === "F1") this.help();
+    } else if (e.key === "Tab" && !e.altKey && !layer) {
+      handled = this.keyboardTab(e.shiftKey);
+    } else if (e.key === "Backspace" && !e.shiftKey && !layer && !isTyping(e.target)) {
+      void this.back();
+    } else if (e.key === "F7") this.toggleFocusRing();
+    else if (e.key === "F1") this.help();
     else if (e.key === "F3") this.finder.step(e.shiftKey ? -1 : 1);
     else if (e.key === "F5") this.reload();
     else handled = false;
@@ -1936,6 +2110,22 @@ export class App {
 }
 
 let toastTimer: number | undefined;
+
+/** Parts of the window the keyboard moves between. */
+type FocusZone = "none" | "bar" | "doc" | "service" | "other";
+
+/** Controls inside a part of the window that Tab stops at, in document order. */
+function reachable(root: HTMLElement): HTMLElement[] {
+  return [...root.querySelectorAll<HTMLElement>('a[href], button, input, select, textarea, summary, [tabindex]')].filter(
+    (x) => x.tabIndex >= 0 && !(x as HTMLButtonElement).disabled && x.offsetParent !== null,
+  );
+}
+
+/** Keys typed into a text field (the find bar) are not shortcuts. */
+function isTyping(target: EventTarget | null): boolean {
+  const e = target as HTMLElement | null;
+  return !!e && (e.isContentEditable || e.tagName === "INPUT" || e.tagName === "TEXTAREA" || e.tagName === "SELECT");
+}
 
 /** Short message; "warning" shows it in the middle of the window in a colour that cannot be missed. */
 export function toast(message: string, kind: "info" | "warning" = "info"): void {

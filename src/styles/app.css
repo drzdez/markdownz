@@ -180,6 +180,117 @@ button {
   text-overflow: ellipsis;
 }
 
+#main.toc-right #toc {
+  order: 2;
+  border-right: none;
+  border-left: 1px solid var(--border);
+}
+
+/* The edge of the table of contents: drag for the width; the mark opens and closes it. */
+#toc-edge {
+  position: relative;
+  flex: none;
+  width: 5px;
+  margin-right: -5px;
+  cursor: col-resize;
+  z-index: 5;
+}
+
+#main.toc-right #toc-edge {
+  order: 1;
+  margin-right: 0;
+  margin-left: -5px;
+}
+
+#toc-edge:hover:not(.closed),
+#toc-edge.dragging {
+  background: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+#toc-edge.closed {
+  cursor: default;
+}
+
+.toc-mark {
+  position: absolute;
+  /* In the middle of the edge, away from the width ruler and the sliders at the top of the document. */
+  top: 50%;
+  transform: translateY(-50%);
+  left: 0;
+  width: 16px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 6px 6px 0;
+  background: var(--chrome);
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 24px;
+  cursor: pointer;
+  opacity: 0.8;
+}
+
+#main.toc-right .toc-mark {
+  left: auto;
+  right: 0;
+  border-left: 1px solid var(--border);
+  border-right: none;
+  border-radius: 6px 0 0 6px;
+}
+
+.toc-mark:hover {
+  color: var(--fg);
+  opacity: 1;
+}
+
+.toc-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 8px 6px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.toc-head span {
+  flex: 1;
+}
+
+.toc-head button {
+  min-width: 24px;
+  padding: 1px 6px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.toc-head button:hover {
+  border-color: var(--border);
+  color: var(--fg);
+}
+
+.toc-detail {
+  width: 90px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+#toc a.toc-item {
+  font-size: 12px;
+  padding-top: 1px;
+  padding-bottom: 1px;
+}
+
+#toc a.toc-item::before {
+  content: "• ";
+  opacity: 0.6;
+}
+
 #toc a:hover {
   color: var(--fg);
   background: var(--hover);
@@ -357,6 +468,22 @@ button {
 .doc-view {
   overflow: auto;
   outline: none;
+  /* Headings jumped to (contents, links) stay below the width ruler. */
+  scroll-padding-top: 28px;
+}
+
+/* Where the keyboard is (Tab moves between links and buttons, Enter follows): a clear ring.
+   Only for keyboard focus (:focus-visible), never after a mouse click; F7 switches it off and on. */
+:root:not(.mdz-focus-off) :is(a, button, input, select, textarea, summary, [tabindex]:not([tabindex="-1"])):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+:root:not(.mdz-focus-off) .markdown-body a:focus-visible {
+  background: var(--mark);
+}
+:root.mdz-focus-off *:focus-visible {
+  outline: none !important;
 }
 
 .pdf-view {
@@ -1404,6 +1531,26 @@ mark.mdz-find.current {
   background: var(--accent);
   color: #fff;
   cursor: pointer;
+}
+
+.mdz-tab-test {
+  margin: 6px 12px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  text-align: center;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.mdz-tab-test:focus {
+  border-style: solid;
+  border-color: var(--accent);
+  color: var(--fg);
+}
+
+.mdz-tab-test[data-result="double"] {
+  background: var(--mark);
 }
 
 .mdz-hint {

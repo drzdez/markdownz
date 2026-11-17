@@ -3,12 +3,12 @@ import { basename } from "../paths";
 import { FORMATS, isFormatEnabled } from "../formats/registry";
 import { APP_VERSION, RELEASES, type Release } from "../releaseNotes";
 import { PLUGINS, isEnabled } from "../render/renderer";
-import type { Config, ThemeSetting } from "../state";
+import { type Config, DOUBLE_TAB_MS, DOUBLE_TAB_RANGE, doubleTabMs, type ThemeSetting } from "../state";
 import { installedPlugins } from "../plugins/manager";
 import { el, openModal } from "./overlay";
 import { pluginSettings } from "./pluginSettings";
 
-const nodeLabel = (n: HistoryNode) => n.title || basename(n.path);
+const nodeLabel = (n: HistoryNode) => (n.title || basename(n.path)) + (n.hash ? ` › #${n.hash}` : "");
 
 /** Chooser shown when going forward from a node with several branches. */
 export function pickForward(options: HistoryNode[], onPick: (node: HistoryNode) => void): void {
@@ -73,6 +73,49 @@ export function showHistoryTree(tree: HistoryTree, onPick: (node: HistoryNode) =
   );
   const layer = openModal("History", body, { className: "wide" });
   body.querySelector<HTMLElement>(".current")?.focus();
+}
+
+/** Settings of the double Tab: the longest gap, and a field to try it in. */
+export function doubleTabSetting(current: () => number, change: (ms: number) => void): HTMLElement {
+  const [min, max] = DOUBLE_TAB_RANGE;
+  const input = el("input", { type: "number", min: String(min), max: String(max), step: "10", value: String(current()) });
+  input.addEventListener("change", () => {
+    const ms = Number(input.value);
+    if (ms >= min && ms <= max) change(Math.round(ms));
+    else input.value = String(current());
+  });
+  const result = el("span", { className: "mdz-tab-test-result", textContent: "Press Tab twice here" });
+  const pad = el("div", { className: "mdz-tab-test", tabIndex: 0, title: "Click here, then press Tab twice quickly" }, result);
+  let last = 0;
+  pad.addEventListener("keydown", (e) => {
+    if (e.key !== "Tab") return;
+    e.preventDefault();
+    e.stopPropagation();
+    const now = performance.now();
+    const gap = Math.round(now - last);
+    if (last && gap <= current()) {
+      result.textContent = `Double Tab (${gap} ms ≤ ${current()} ms)`;
+      pad.dataset.result = "double";
+      last = 0;
+    } else {
+      result.textContent = last && gap < 3000 ? `Two single Tabs (${gap} ms > ${current()} ms); press again` : "One Tab; press it again quickly";
+      pad.dataset.result = "single";
+      last = now;
+    }
+  });
+  pad.addEventListener("blur", () => {
+    last = 0;
+    delete pad.dataset.result;
+    result.textContent = "Press Tab twice here";
+  });
+  return el(
+    "fieldset",
+    {},
+    el("legend", { textContent: "Keyboard" }),
+    el("label", { className: "mdz-field" }, el("span", { textContent: "Double Tab: longest gap in ms" }), input),
+    pad,
+    el("p", { className: "mdz-hint", textContent: `Two Tab presses within this time jump to the next part of the window (document → menus → service marks). Default ${DOUBLE_TAB_MS} ms.` }),
+  );
 }
 
 export function showSettings(config: Config, onChange: (config: Config) => void, checkNow: () => void, pluginsChanged: () => void, section?: "plugins"): void {
@@ -157,6 +200,10 @@ export function showSettings(config: Config, onChange: (config: Config) => void,
     el("label", { className: "mdz-field" }, el("span", { textContent: "Pages as printed %" }), zoomInput(config.zoomPages, (z) => onChange((config = { ...config, zoomPages: z })))),
     el("p", { className: "mdz-hint", textContent: "Click on the % in the toolbar to return to it, double click for 100 %." }),
   );
+  const keyboardGroup = doubleTabSetting(
+    () => doubleTabMs(config),
+    (ms) => onChange((config = { ...config, doubleTabMs: ms })),
+  );
   const daily = el("input", { type: "checkbox", checked: config.checkUpdates });
   daily.dataset.nav = "";
   daily.addEventListener("change", () => {
@@ -179,7 +226,7 @@ export function showSettings(config: Config, onChange: (config: Config) => void,
     },
     changed: pluginsChanged,
   });
-  const layer = openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, zoomGroup, formatGroup, pluginsGroup, pluginGroup, updateGroup));
+  const layer = openModal("Settings", el("div", { className: "mdz-settings" }, themeGroup, zoomGroup, keyboardGroup, formatGroup, pluginsGroup, pluginGroup, updateGroup));
   if (section === "plugins") pluginsGroup.scrollIntoView({ block: "start" });
   now.addEventListener("click", () => {
     layer.close();
@@ -196,12 +243,12 @@ const SHORTCUTS: [string, string][] = [
   ["Right click on tab", "Copy file or its path, close others / to the right / to the left / all"],
   ["Drag a tab", "Reorder tabs"],
   ["Ctrl+1…9", "Go to tab"],
-  ["Alt+← · mouse back", "Back"],
+  ["Alt+← · Backspace · mouse back", "Back (also after a link to a place in the same document)"],
   ["Alt+→ · mouse forward", "Forward (asks when there are several branches)"],
   ["Ctrl+H", "History tree of the tab"],
   ["Ctrl+click link", "Open linked document in a new tab"],
   ["Ctrl+F · F3 · Shift+F3", "Find · next · previous"],
-  ["Ctrl+B", "Toggle table of contents"],
+  ["Ctrl+B", "Toggle table of contents (also the ‹ › mark on its edge; drag the edge for the width; in its header: slider for the detail from main chapters to bullets, ⇤ ⇥ side)"],
   ["Ctrl+wheel · Ctrl+ + / −", "Zoom this document in / out"],
   ["Ctrl+0", "Zoom 100 %; at 100 % already, the preset zoom from Settings"],
   ["Click / double click the % button", "Preset zoom from Settings / 100 %"],
@@ -215,6 +262,11 @@ const SHORTCUTS: [string, string][] = [
   ["Ctrl+Z", "Undo the last marker edit (orientation marks)"],
   ["Ctrl+,", "Settings and plugins"],
   ["Click a diagram", "Enlarge; wheel zooms, drag pans"],
+  ["Tab · Shift+Tab · Enter", "Move between links and buttons · follow the link"],
+  ["Tab · Shift+Tab with nothing chosen", "First link of the document · first menu (+), Shift+Tab again for the tabs"],
+  ["Tab twice quickly", "Jump to the next part: document → menus → service marks of the document (page breaks) → document; plain Tab goes round inside the part. The time is set in Settings → Keyboard"],
+  ["On a tab: ← → · Enter · Delete", "Move between tabs · show it · close it"],
+  ["F7", "Show / hide the ring around the link or button the keyboard is on"],
   ["F1", "This help"],
 ];
 

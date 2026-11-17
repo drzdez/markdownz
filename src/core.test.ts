@@ -207,3 +207,22 @@ describe("update checks", () => {
     expect(shouldOffer("0.3.1", "0.3.1", undefined)).toBe(false);
   });
 });
+
+describe("jumps inside a document", () => {
+  it("add places to go back to, in the same document", () => {
+    const h = new HistoryTree("a.md");
+    h.current.title = "A";
+    const jump = h.jump("usage");
+    expect(jump).toMatchObject({ path: "a.md", hash: "usage", title: "A" });
+    expect(h.canBack).toBe(true);
+    expect(h.back()!.hash).toBeUndefined();
+    // The same jump again reuses the place; another one is a new branch.
+    expect(h.jump("usage").id).toBe(jump.id);
+    h.back();
+    expect(h.jump("install").id).not.toBe(jump.id);
+    expect(h.back()!.children).toHaveLength(2);
+    // A link to another document from a place goes on from there.
+    h.forward(jump.id);
+    expect(h.navigate("b.md").parent).toBe(jump.id);
+  });
+});

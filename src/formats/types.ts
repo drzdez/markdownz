@@ -54,6 +54,10 @@ export interface OutlineItem {
   title: string;
   /** Nesting depth, 1 = top level. */
   level: number;
+  /** A list item (bullet) under a chapter, shown smaller; headings and other entries have none. */
+  kind?: "item";
+  /** Of a list item: how deep it is nested in its list (0 = top). */
+  depth?: number;
   /** Sort key comparable with DocumentView.position(); items without it are never highlighted. */
   position?: () => number;
   activate(): void;
@@ -195,7 +199,8 @@ export interface DocumentView {
   setZoom(zoom: number): void;
   /** Scrolls to an in-document target (`#fragment`); returns false when not found. */
   scrollToFragment(fragment: string): boolean;
-  outline(): OutlineItem[];
+  /** The table of contents; `lists`: also the list items (bullets) under the chapters, where the format has them. */
+  outline(options?: { lists?: boolean }): OutlineItem[];
   /** Current reading position in the same units as OutlineItem.position. */
   position(): number;
   /**

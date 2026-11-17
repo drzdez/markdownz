@@ -11,6 +11,7 @@ import { Ruler } from "../ui/ruler";
 import { ColumnSlider } from "../ui/columnSlider";
 import type { DocExceptions } from "../print/orientation";
 import { planOrientation, readBlocks } from "./pageOrientation";
+import { markdownOutline } from "./outline";
 import { columnsCut, prepareSheetsForPaper, prepareSheetsForScreen, type SheetState } from "./sheets";
 import { DEFAULT_TEXT_WIDTH, fitObjectsForPaper, fitWideObjects, type Widths } from "./wideObjects";
 import type { DocumentView, FormatPlugin, OutlineItem, PrintPages, ViewContext, ViewHost } from "./types";
@@ -265,18 +266,13 @@ class MarkdownView implements DocumentView {
     return !!target;
   }
 
-  outline(): OutlineItem[] {
-    const headings = this.article ? [...this.article.querySelectorAll<HTMLElement>("h1, h2, h3, h4, h5, h6")] : [];
-    return headings.map((heading) => ({
-      title: heading.textContent ?? "",
-      level: Number(heading.tagName[1]),
-      position: () => heading.getBoundingClientRect().top - this.element.getBoundingClientRect().top + this.element.scrollTop,
-      activate: () => heading.scrollIntoView({ block: "start" }),
-    }));
+  outline(options: { lists?: boolean } = {}): OutlineItem[] {
+    return this.article ? markdownOutline(this.article, this.element, options) : [];
   }
 
   position(): number {
-    return this.element.scrollTop + 16;
+    // Below the width ruler: a heading jumped to stops 28 px from the top (scroll-padding-top of .doc-view).
+    return this.element.scrollTop + 40;
   }
 
   /**
