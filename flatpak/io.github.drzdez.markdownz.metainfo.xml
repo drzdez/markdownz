@@ -81,6 +81,12 @@
   </keywords>
 
   <releases>
+    <release version="0.5.2" date="2026-11-17">
+      <description>
+        <p>Table of contents: a slider in its header sets the detail, from the main chapters through all heading levels to the bullets of Markdown documents. Drag its edge to change the width; the mark on the edge opens and closes it, and it can move to the right side. A chapter clicked in it now stays below the width ruler and is highlighted correctly.</p>
+        <p>Back after a link to a place in the same document, also with Backspace. The keyboard focus is visible (F7 hides or shows it). Tab with nothing focused goes to the first link of the document, Shift+Tab to the menus; Tab goes round inside the document, the menus or the page break marks, and Tab twice quickly jumps between them; the time is set in Settings, Keyboard, with a field to try it. The tabs can be used with the arrow keys, Enter and Delete.</p>
+      </description>
+    </release>
     <release version="0.5.1" date="2026-11-16">
       <description>
         <p>Czech data box messages (.zfo): received and sent messages and delivery receipts open in a tab. The envelope (sender, recipient, subject, references, times, status) is a card at the top, every file of the message opens on one click, and a main text in HTML or plain text is shown right below. The data box signature is not checked yet.</p>
